@@ -1,0 +1,17 @@
+{
+  "schema_version": "0.1",
+  "part": { "name": "broken_hole_outside" },
+  "parameters": {
+    "L": { "value": 50, "source": { "type": "drawing", "confidence": 0.99 } },
+    "W": { "value": 30, "source": { "type": "drawing", "confidence": 0.99 } },
+    "T": { "value": 5,  "source": { "type": "drawing", "confidence": 0.99 } }
+  },
+  "features": [
+    { "id": "sk", "type": "sketch", "plane": "XY",
+      "entities": [ { "kind": "rect", "corner": [0, 0], "size": ["L", "W"] } ] },
+    { "id": "ex", "type": "extrude", "profile": "sk", "distance": "T" },
+    { "id": "h1", "type": "hole", "face": { "plane": "XY", "offset": "T" },
+      "positions": [[48, 15]], "diameter": 6, "depth": "through_all" }
+  ],
+  "checks": [ { "id": "c_bbox", "kind": "bbox", "expected": ["L", "W", "T"] } ]
+}

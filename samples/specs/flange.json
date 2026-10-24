@@ -1,0 +1,38 @@
+{
+  "schema_version": "0.1",
+  "part": { "name": "flange", "material": "SS400", "drawing": { "file": "(hand-written)", "units": "mm" } },
+  "parameters": {
+    "D":      { "value": 100, "source": { "type": "drawing", "view": "top",   "label": "Ø100",   "confidence": 0.98 } },
+    "T":      { "value": 12,  "source": { "type": "drawing", "view": "front", "label": "12",     "confidence": 0.97 } },
+    "hub_d":  { "value": 60,  "source": { "type": "drawing", "view": "top",   "label": "Ø60",    "confidence": 0.97 } },
+    "hub_h":  { "value": 10,  "source": { "type": "drawing", "view": "front", "label": "10",     "confidence": 0.95 } },
+    "bore":   { "value": 40,  "source": { "type": "drawing", "view": "top",   "label": "Ø40",    "confidence": 0.97 } },
+    "pcd":    { "value": 75,  "source": { "type": "drawing", "view": "top",   "label": "P.C.D 75", "confidence": 0.95 } },
+    "bolt_d": { "value": 9,   "source": { "type": "drawing", "view": "top",   "label": "6-Ø9",   "confidence": 0.95 } },
+    "n_bolt": { "value": 6, "unit": "", "source": { "type": "drawing", "view": "top", "label": "6-Ø9", "confidence": 0.95 } }
+  },
+  "features": [
+    { "id": "sk_disc", "type": "sketch", "plane": "XY",
+      "entities": [ { "kind": "circle", "center": [0, 0], "diameter": "D" } ] },
+    { "id": "ex_disc", "type": "extrude", "profile": "sk_disc", "distance": "T", "operation": "new_body" },
+    { "id": "sk_hub", "type": "sketch", "plane": "XY", "offset": "T",
+      "entities": [ { "kind": "circle", "center": [0, 0], "diameter": "hub_d" } ] },
+    { "id": "ex_hub", "type": "extrude", "profile": "sk_hub", "distance": "hub_h", "operation": "join" },
+    { "id": "h_bore", "type": "hole", "face": { "plane": "XY", "offset": "T+hub_h" },
+      "positions": [[0, 0]], "diameter": "bore", "depth": "through_all" },
+    { "id": "h_bolt", "type": "hole", "face": { "plane": "XY", "offset": "T" },
+      "positions": [["pcd/2", 0]], "diameter": "bolt_d", "depth": "through_all" },
+    { "id": "p_bolt", "type": "pattern_circ", "features": ["h_bolt"], "axis": "Z", "count": "n_bolt", "angle": 360 }
+  ],
+  "checks": [
+    { "id": "c_bbox",   "kind": "bbox",          "expected": ["D", "D", "T+hub_h"] },
+    { "id": "c_bore",   "kind": "hole_diameter", "feature": "h_bore", "expected": "bore" },
+    { "id": "c_bolt_n", "kind": "hole_count",    "diameter": "bolt_d", "expected": "n_bolt" },
+    { "id": "c_bolt_p", "kind": "hole_positions", "diameter": "bolt_d",
+      "expected": [["pcd/2*cos(0)",   "pcd/2*sin(0)"],   ["pcd/2*cos(60)",  "pcd/2*sin(60)"],
+                   ["pcd/2*cos(120)", "pcd/2*sin(120)"], ["pcd/2*cos(180)", "pcd/2*sin(180)"],
+                   ["pcd/2*cos(240)", "pcd/2*sin(240)"], ["pcd/2*cos(300)", "pcd/2*sin(300)"]] },
+    { "id": "c_vol",    "kind": "volume",
+      "expected": "pi*(D/2)**2*T + pi*(hub_d/2)**2*hub_h - pi*(bore/2)**2*(T+hub_h) - n_bolt*pi*(bolt_d/2)**2*T" }
+  ]
+}

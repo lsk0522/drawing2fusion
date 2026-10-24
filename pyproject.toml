@@ -1,0 +1,21 @@
+[project]
+name = "drawing2fusion"
+version = "0.3.0"
+description = "Build Fusion models from part-spec.json and report dimension mismatches"
+requires-python = ">=3.9"
+dependencies = []          # Phase 0-2 use the standard library only
+
+[project.optional-dependencies]
+dxf = ["ezdxf"]
+pdf = ["pymupdf"]
+vision = ["anthropic", "pymupdf"]
+
+[project.scripts]
+d2f = "d2f.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["d2f*"]

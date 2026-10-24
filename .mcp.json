@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "drawing2fusion": {
+      "command": "python",
+      "args": ["-m", "d2f.mcp_server"]
+    }
+  }
+}

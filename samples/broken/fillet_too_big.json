@@ -1,0 +1,17 @@
+{
+  "schema_version": "0.1",
+  "part": { "name": "broken_fillet_too_big" },
+  "parameters": {
+    "L": { "value": 40, "source": { "type": "drawing", "confidence": 0.99 } },
+    "W": { "value": 20, "source": { "type": "drawing", "confidence": 0.99 } },
+    "T": { "value": 10, "source": { "type": "drawing", "confidence": 0.99 } },
+    "R": { "value": 12, "source": { "type": "drawing", "confidence": 0.95 } }
+  },
+  "features": [
+    { "id": "sk", "type": "sketch", "plane": "XY",
+      "entities": [ { "kind": "rect", "corner": [0, 0], "size": ["L", "W"] } ] },
+    { "id": "ex", "type": "extrude", "profile": "sk", "distance": "T" },
+    { "id": "f1", "type": "fillet", "edges": { "select": "vertical_outer", "of": "ex" }, "radius": "R" }
+  ],
+  "checks": [ { "id": "c_bbox", "kind": "bbox", "expected": ["L", "W", "T"] } ]
+}

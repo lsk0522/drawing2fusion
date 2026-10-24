@@ -1,0 +1,51 @@
+{
+  "schema_version": "0.1",
+  "part": {
+    "name": "bevel_gear_from_section",
+    "drawing": { "file": "samples/drawings/public/qcad_example01.dxf", "units": "mm",
+                 "reader": "chat vision read (docs/image-reading.md) — DXF reader stops on this sheet (section view + hatch, E102/E208)" },
+    "note": "Bevel gear blank, pitch angle 45 deg. Axis = X, left (hub) face at X=0. Half-section profile on the XZ plane (u = X, v = radius) revolved about X. Keyway on +Z, cut through."
+  },
+  "parameters": {
+    "d_bore":  { "value": 35,    "source": { "type": "drawing", "view": "section", "label": "Ø35 H6",       "confidence": 0.95 }, "tolerance": [0, 0.016] },
+    "c_bore":  { "value": 1.5,   "source": { "type": "drawing", "view": "section", "label": "1.5x45°",      "confidence": 0.9 } },
+    "d_hub":   { "value": 70,    "source": { "type": "drawing", "view": "section", "label": "Ø70",          "confidence": 0.97 } },
+    "d_tip":   { "value": 97.66, "source": { "type": "drawing", "view": "section", "label": "Ø97.66 h11",   "confidence": 0.95 }, "tolerance": [-0.22, 0] },
+    "d_toe":   { "value": 73.64, "source": { "type": "drawing", "view": "section", "label": "Ø73.64",       "confidence": 0.93 } },
+    "x_heel":  { "value": 31.83, "source": { "type": "drawing", "view": "section", "label": "31.83±0.1",    "confidence": 0.95 }, "tolerance": [-0.1, 0.1] },
+    "x_toe":   { "value": 42.43, "source": { "type": "drawing", "view": "section", "label": "42.43",        "confidence": 0.95 } },
+    "L_back":  { "value": 37,    "source": { "type": "drawing", "view": "section", "label": "37",           "confidence": 0.97 } },
+    "L_hub":   { "value": "x_heel - (d_tip - d_hub)/2",
+                 "source": { "type": "derived", "reason": "45° 뒤 원뿔(back cone)이 Ø70 끝에서 이끝 Ø97.66까지 올라감 → 18.0, 도면 참고치수 (18)과 일치" } },
+    "toe_drop":{ "value": "x_toe - L_back",
+                 "source": { "type": "derived", "reason": "앞쪽(toe) 면이 피치 원뿔(45°)에 수직 → 이끝에서 뒷면까지 45°로 내려감" } },
+    "key_w":   { "value": 10,    "source": { "type": "drawing", "view": "side",    "label": "10 P9",        "confidence": 0.95 }, "tolerance": [-0.051, -0.015] },
+    "key_t":   { "value": 38.3,  "source": { "type": "drawing", "view": "side",    "label": "38.3 +0.2/0",  "confidence": 0.93 }, "tolerance": [0, 0.2] }
+  },
+  "features": [
+    { "id": "sk_profile", "type": "sketch", "plane": "XZ",
+      "entities": [ { "id": "half", "kind": "polyline", "closed": true,
+                      "points": [[0, "d_bore/2 + c_bore"], [0, "d_hub/2"], ["L_hub", "d_hub/2"], ["x_heel", "d_tip/2"],
+                                 ["x_toe", "d_toe/2"], ["L_back", "d_toe/2 - toe_drop"], ["L_back", "d_bore/2"],
+                                 ["c_bore", "d_bore/2"]] } ] },
+    { "id": "rv_blank", "type": "revolve", "profile": "sk_profile", "axis": "X", "angle": 360, "operation": "new_body" },
+    { "id": "sk_key", "type": "sketch", "plane": "YZ",
+      "entities": [ { "id": "key", "kind": "rect", "corner": ["-key_w/2", 0], "size": ["key_w", "key_t - d_bore/2"] } ] },
+    { "id": "ex_key", "type": "extrude", "profile": "sk_key", "distance": "through_all", "direction": "symmetric", "operation": "cut" }
+  ],
+  "checks": [
+    { "id": "c_bbox", "kind": "bbox", "expected": ["x_toe", "d_tip", "d_tip"] },
+    { "id": "c_bore", "kind": "hole_diameter", "expected": "d_bore" },
+    { "id": "c_bore_pos", "kind": "hole_positions", "axis": "X", "diameter": "d_bore", "expected": [[0, 0]] },
+    { "id": "c_key_top", "kind": "plane", "axis": "Z", "at": "key_t - d_bore/2",
+      "note": "키홈 바닥면이 +Z 쪽 Z=20.8에 있어야 함 (측면도에서 키홈이 위쪽). 부피·bbox로는 키홈 방향을 못 잡음" },
+    { "id": "c_vol", "kind": "volume", "expected": 150862.71, "rel_tol": 0.005,
+      "note": "Pappus(회전체 830 mm² × 2π × 도심 반지름) − 키홈 1298.8 mm³, 계산은 docs/verification-public-drawings.md" }
+  ],
+  "notes": [
+    { "text": "이(teeth) 형상 — 베벨기어 치형", "applied": false, "reason": "도면이 치형을 그리지 않고 블랭크만 표시 (모듈·잇수 없음). 블랭크까지만 모델링" },
+    { "text": "피치 원뿔 꼭짓점까지 75 (0/−0.05)", "applied": false, "reason": "형상 치수가 아니라 기준 거리. 45° 피치 원뿔이 꼭짓점 X=75에서 만나는지는 notes로만 확인" },
+    { "text": "이폭 16 (이끝 선 길이)", "applied": false, "reason": "검산: 이끝 (31.83, 48.83)→(42.43, 36.82) 길이 = 16.02 ≈ 16 — 읽은 치수끼리 일치" },
+    { "text": "표면 거칠기 N6, 동심도 0.05 A, 공차(H6, h11, P9)", "applied": false, "reason": "형상에는 영향 없음 — parameters.tolerance 에만 기록" }
+  ]
+}

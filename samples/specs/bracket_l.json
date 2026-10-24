@@ -1,0 +1,33 @@
+{
+  "schema_version": "0.1",
+  "part": { "name": "bracket_l", "material": "SS400", "drawing": { "file": "(hand-written)", "units": "mm" } },
+  "parameters": {
+    "A":    { "value": 60,  "source": { "type": "drawing", "view": "top", "label": "60",  "confidence": 0.97 } },
+    "B":    { "value": 50,  "source": { "type": "drawing", "view": "top", "label": "50",  "confidence": 0.97 } },
+    "arm":  { "value": 20,  "source": { "type": "drawing", "view": "top", "label": "20",  "confidence": 0.95 } },
+    "T":    { "value": 8,   "source": { "type": "drawing", "view": "front", "label": "8", "confidence": 0.95 } },
+    "d":    { "value": 5.5, "source": { "type": "drawing", "view": "top", "label": "2-Ø5.5 ⌴Ø9.5↧5.4", "confidence": 0.9 } },
+    "cb_d": { "value": 9.5, "source": { "type": "drawing", "view": "top", "label": "⌴Ø9.5", "confidence": 0.9 } },
+    "cb_h": { "value": 5.4, "source": { "type": "drawing", "view": "top", "label": "↧5.4",  "confidence": 0.9 } },
+    "ch":   { "value": 1,   "source": { "type": "inferred", "reason": "주기 '모서리 C1' 로부터" }, "confidence": 0.85 }
+  },
+  "features": [
+    { "id": "sk_l", "type": "sketch", "plane": "XY",
+      "entities": [ { "id": "outline", "kind": "polyline", "closed": true,
+                      "points": [[0, 0], ["A", 0], ["A", "arm"], ["arm", "arm"], ["arm", "B"], [0, "B"]] } ] },
+    { "id": "ex_l", "type": "extrude", "profile": "sk_l", "distance": "T", "operation": "new_body" },
+    { "id": "h_cb", "type": "hole", "face": { "plane": "XY", "offset": "T" }, "direction": "negative",
+      "positions": [["A-arm/2-5", "arm/2"], ["arm/2", "B-arm/2-5"]],
+      "hole_type": "counterbore", "diameter": "d", "cb_diameter": "cb_d", "cb_depth": "cb_h",
+      "depth": "through_all" },
+    { "id": "c_top", "type": "chamfer", "edges": { "select": "top_outer", "of": "ex_l" }, "distance": "ch" }
+  ],
+  "checks": [
+    { "id": "c_bbox",  "kind": "bbox",           "expected": ["A", "B", "T"] },
+    { "id": "c_hole_n","kind": "hole_count",     "diameter": "d", "expected": 2 },
+    { "id": "c_hole_d","kind": "hole_diameter",  "feature": "h_cb", "expected": "d" },
+    { "id": "c_hole_p","kind": "hole_positions", "feature": "h_cb", "diameter": "d",
+      "expected": [["A-arm/2-5", "arm/2"], ["arm/2", "B-arm/2-5"]] },
+    { "id": "c_cb_n",  "kind": "hole_count",     "diameter": "cb_d", "expected": 2 }
+  ]
+}

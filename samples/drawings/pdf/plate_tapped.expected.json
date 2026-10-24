@@ -1,0 +1,48 @@
+{
+  "bbox": [
+    60.0,
+    40.0,
+    10.0
+  ],
+  "holes": [
+    {
+      "axis": "Z",
+      "diameter": 5.0,
+      "positions": [
+        [
+          10,
+          10
+        ],
+        [
+          10,
+          30
+        ],
+        [
+          50,
+          10
+        ],
+        [
+          50,
+          30
+        ]
+      ],
+      "thread": "M6x1"
+    },
+    {
+      "axis": "Z",
+      "diameter": 8.0,
+      "positions": [
+        [
+          30,
+          20
+        ]
+      ]
+    }
+  ],
+  "volume": 22711.947012028188,
+  "source_dxf": "plate_tapped.dxf",
+  "pdf": {
+    "dash_style": "segments",
+    "paper_scale": 1.0
+  }
+}

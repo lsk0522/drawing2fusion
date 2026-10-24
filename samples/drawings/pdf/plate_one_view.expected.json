@@ -1,0 +1,29 @@
+{
+  "bbox": [
+    70.0,
+    50.0,
+    5.0
+  ],
+  "holes": [
+    {
+      "axis": "Z",
+      "diameter": 8.0,
+      "positions": [
+        [
+          15,
+          25
+        ],
+        [
+          55,
+          25
+        ]
+      ]
+    }
+  ],
+  "volume": 16997.345175425635,
+  "source_dxf": "plate_one_view.dxf",
+  "pdf": {
+    "dash_style": "segments",
+    "paper_scale": 1.0
+  }
+}

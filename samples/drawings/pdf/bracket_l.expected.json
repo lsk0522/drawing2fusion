@@ -1,0 +1,42 @@
+{
+  "bbox": [
+    60.0,
+    50.0,
+    8.0
+  ],
+  "holes": [
+    {
+      "axis": "Z",
+      "diameter": 5.5,
+      "positions": [
+        [
+          45.0,
+          10.0
+        ],
+        [
+          10.0,
+          35.0
+        ]
+      ]
+    },
+    {
+      "axis": "Z",
+      "diameter": 9.5,
+      "positions": [
+        [
+          45.0,
+          10.0
+        ],
+        [
+          10.0,
+          35.0
+        ]
+      ]
+    }
+  ],
+  "source_dxf": "bracket_l.dxf",
+  "pdf": {
+    "dash_style": "segments",
+    "paper_scale": 1.0
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": "0.1",
+  "part": { "name": "broken_needs_answer" },
+  "parameters": {
+    "L":      { "value": 60, "source": { "type": "drawing", "confidence": 0.98 } },
+    "W":      { "value": 30, "source": { "type": "drawing", "confidence": 0.62, "view": "top", "label": "3O?" } },
+    "T":      { "value": null, "source": { "type": "unresolved", "reason": "측면도에 두께 치수 없음" } },
+    "fillet": { "value": 2, "source": { "type": "inferred", "reason": "R 표기 있으나 값 흐림" } }
+  },
+  "features": [
+    { "id": "sk", "type": "sketch", "plane": "XY",
+      "entities": [ { "kind": "rect", "corner": [0, 0], "size": ["L", "W"] } ] },
+    { "id": "ex", "type": "extrude", "profile": "sk", "distance": "T" },
+    { "id": "h1", "type": "hole", "face": { "plane": "XY", "offset": "T" },
+      "positions": [[30, 15]], "diameter": 10 }
+  ],
+  "checks": [ { "id": "c_bbox", "kind": "bbox", "expected": ["L", "W", "T"] } ]
+}

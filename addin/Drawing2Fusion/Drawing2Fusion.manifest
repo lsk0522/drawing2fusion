@@ -1,0 +1,13 @@
+{
+  "autodeskProduct": "Fusion",
+  "type": "addin",
+  "id": "6c3f2b1e-9d4a-4f7e-8b2a-d2f000000001",
+  "author": "LSK0522",
+  "description": {
+    "": "Drawing2Fusion: builds parametric models from part-spec.json over a localhost bridge and reports dimension mismatches."
+  },
+  "version": "0.1.0",
+  "runOnStartup": true,
+  "supportedOS": "windows|mac",
+  "editEnabled": true
+}

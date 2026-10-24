@@ -1,0 +1,27 @@
+{
+  "schema_version": "0.1",
+  "part": { "name": "shaft_stepped", "material": "S45C", "drawing": { "file": "(hand-written)", "units": "mm" },
+            "note": "Half-section profile drawn on the XZ plane (u = X, v = Z) and revolved about X; keyway slot cut from a plane tangent to the small diameter." },
+  "parameters": {
+    "d1":      { "value": 30, "source": { "type": "drawing", "view": "front", "label": "Ø30", "confidence": 0.98 } },
+    "L1":      { "value": 40, "source": { "type": "drawing", "view": "front", "label": "40",  "confidence": 0.97 } },
+    "d2":      { "value": 20, "source": { "type": "drawing", "view": "front", "label": "Ø20", "confidence": 0.98 } },
+    "L2":      { "value": 60, "source": { "type": "drawing", "view": "front", "label": "60",  "confidence": 0.97 } },
+    "key_w":   { "value": 6,  "source": { "type": "drawing", "view": "top",   "label": "6",   "confidence": 0.95 } },
+    "key_len": { "value": 40, "source": { "type": "drawing", "view": "top",   "label": "40",  "confidence": 0.95 } },
+    "key_d":   { "value": 3.5, "source": { "type": "drawing", "view": "side", "label": "3.5", "confidence": 0.9 } }
+  },
+  "features": [
+    { "id": "sk_profile", "type": "sketch", "plane": "XZ",
+      "entities": [ { "id": "half", "kind": "polyline", "closed": true,
+                      "points": [[0, 0], [0, "d1/2"], ["L1", "d1/2"], ["L1", "d2/2"], ["L1+L2", "d2/2"], ["L1+L2", 0]] } ] },
+    { "id": "rv_shaft", "type": "revolve", "profile": "sk_profile", "axis": "X", "angle": 360, "operation": "new_body" },
+    { "id": "sk_key", "type": "sketch", "plane": "XY", "offset": "d2/2",
+      "entities": [ { "kind": "slot", "start": ["L1+10+key_w/2", 0], "end": ["L1+10+key_len-key_w/2", 0], "width": "key_w" } ] },
+    { "id": "ex_key", "type": "extrude", "profile": "sk_key", "distance": "key_d", "direction": "negative", "operation": "cut" }
+  ],
+  "checks": [
+    { "id": "c_bbox", "kind": "bbox", "expected": ["L1+L2", "d1", "d1"] },
+    { "id": "c_vol",  "kind": "volume", "expected": null, "note": "keyway volume on a curved face - recorded only" }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "schema_version": "0.1",
+  "part": { "name": "block_features", "material": "AL6061", "drawing": { "file": "(hand-written)", "units": "mm" },
+            "note": "Covers a side pocket sketched on the YZ plane, 90 deg countersinks and a 2x2 rectangular pattern." },
+  "parameters": {
+    "L":    { "value": 60, "source": { "type": "drawing", "view": "top",   "label": "60", "confidence": 0.98 } },
+    "W":    { "value": 40, "source": { "type": "drawing", "view": "top",   "label": "40", "confidence": 0.98 } },
+    "H":    { "value": 30, "source": { "type": "drawing", "view": "front", "label": "30", "confidence": 0.98 } },
+    "pk_w": { "value": 20, "source": { "type": "drawing", "view": "side",  "label": "20", "confidence": 0.95 } },
+    "pk_h": { "value": 10, "source": { "type": "drawing", "view": "side",  "label": "10", "confidence": 0.95 } },
+    "pk_d": { "value": 15, "source": { "type": "drawing", "view": "top",   "label": "15", "confidence": 0.95 } },
+    "hd":   { "value": 5,  "source": { "type": "drawing", "view": "top",   "label": "4-Ø5 ⌵Ø9×90°", "confidence": 0.95 } },
+    "csd":  { "value": 9,  "source": { "type": "drawing", "view": "top",   "label": "⌵Ø9×90°", "confidence": 0.95 } },
+    "px":   { "value": 10, "source": { "type": "drawing", "view": "top",   "label": "10", "confidence": 0.95 } },
+    "py":   { "value": 20, "source": { "type": "drawing", "view": "top",   "label": "20", "confidence": 0.95 } }
+  },
+  "features": [
+    { "id": "sk_base", "type": "sketch", "plane": "XY",
+      "entities": [ { "kind": "rect", "corner": [0, 0], "size": ["L", "W"] } ] },
+    { "id": "ex_base", "type": "extrude", "profile": "sk_base", "distance": "H", "operation": "new_body" },
+    { "id": "sk_pocket", "type": "sketch", "plane": "YZ",
+      "entities": [ { "kind": "rect", "corner": [10, 10], "size": ["pk_w", "pk_h"] } ] },
+    { "id": "ex_pocket", "type": "extrude", "profile": "sk_pocket", "distance": "pk_d", "direction": "positive", "operation": "cut" },
+    { "id": "h_cs", "type": "hole", "face": { "plane": "XY", "offset": "H" }, "direction": "negative",
+      "positions": [[40, 10]], "diameter": "hd", "hole_type": "countersink", "cs_diameter": "csd", "cs_angle": 90,
+      "depth": "through_all" },
+    { "id": "p_cs", "type": "pattern_rect", "features": ["h_cs"],
+      "x": { "count": 2, "pitch": "px" }, "y": { "count": 2, "pitch": "py" } }
+  ],
+  "checks": [
+    { "id": "c_bbox",   "kind": "bbox",           "expected": ["L", "W", "H"] },
+    { "id": "c_hole_n", "kind": "hole_count",     "diameter": "hd", "expected": 4 },
+    { "id": "c_hole_p", "kind": "hole_positions", "diameter": "hd", "expected": [[40, 10], [50, 10], [40, 30], [50, 30]] },
+    { "id": "c_vol",    "kind": "volume",
+      "expected": "L*W*H - pk_w*pk_h*pk_d - 4*(pi*(hd/2)**2*H + pi*((csd-hd)/2)/3*((csd/2)**2 + (csd/2)*(hd/2) + (hd/2)**2) - pi*(hd/2)**2*((csd-hd)/2))" }
+  ]
+}

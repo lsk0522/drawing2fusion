@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Drawing2Fusion</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1d2733; --muted:#5f6b7a; --line:#dde2e8; --accent:#0a6ed1;
+          --ok:#1a7f37; --warn:#9a6700; --err:#c62828; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#1f2329; --card:#2a2f37; --ink:#e7ebf0; --muted:#9aa5b1; --line:#3a414b; --accent:#4ea1ff;
+            --ok:#56c271; --warn:#e3b341; --err:#ff6b6b; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:12px; font:13px/1.45 "Segoe UI","Malgun Gothic",system-ui,sans-serif;
+         background:var(--bg); color:var(--ink); }
+  h1 { font-size:15px; margin:0 0 2px; }
+  .sub { color:var(--muted); font-size:12px; margin-bottom:10px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:10px; }
+  button { font:inherit; border:1px solid var(--line); background:var(--card); color:var(--ink);
+           border-radius:6px; padding:6px 10px; cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; width:100%; padding:9px; }
+  button:disabled { opacity:.5; cursor:default; }
+  .row { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+  #status { font-weight:600; }
+  #status.ok { color:var(--ok); } #status.warn { color:var(--warn); } #status.err { color:var(--err); }
+  #alerts { max-height:220px; overflow:auto; }
+  .al { padding:4px 0; border-bottom:1px solid var(--line); }
+  .al:last-child { border-bottom:0; }
+  .al b { font-weight:600; }
+  .al .m { color:var(--muted); font-size:12px; white-space:pre-wrap; }
+  .sev-ERROR b, .sev-BLOCK b { color:var(--err); } .sev-WARN b { color:var(--warn); } .sev-DONE b { color:var(--ok); }
+  details { margin-top:6px; } summary { cursor:pointer; color:var(--muted); font-size:12px; }
+  pre { margin:6px 0 0; max-height:180px; overflow:auto; font:11px/1.35 Consolas,monospace; white-space:pre-wrap;
+        color:var(--muted); }
+  .q { padding:8px 0; border-bottom:1px solid var(--line); }
+  .q:last-child { border-bottom:0; }
+  .q .t { font-weight:600; margin-bottom:4px; }
+  .q label { display:block; margin:2px 0; }
+  .q input[type=number] { width:110px; font:inherit; padding:3px 6px; border:1px solid var(--line); border-radius:4px;
+                          background:var(--bg); color:var(--ink); }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+  <h1>Drawing2Fusion</h1>
+  <div class="sub">도면(DXF · 벡터 PDF)이나 part-spec(.json)으로 모델을 만들고 치수를 검증합니다.</div>
+
+  <div class="card">
+    <button class="primary" id="pick">도면 열기…</button>
+    <div class="row">
+      <button id="rerun" disabled>다시 실행</button>
+      <button id="folder" disabled>결과 폴더</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div id="status">대기 중</div>
+    <div id="file" class="sub" style="margin:2px 0 0"></div>
+    <div id="alerts"></div>
+    <details><summary>실행 기록</summary><pre id="log"></pre></details>
+  </div>
+
+  <div class="card hidden" id="qcard">
+    <div class="t" style="font-weight:600">확인이 필요한 값</div>
+    <div id="questions"></div>
+    <div class="row"><button class="primary" id="send">답하고 계속 만들기</button></div>
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let outDir = null;
+
+function send(action, data) {
+  try { return adsk.fusionSendData(action, JSON.stringify(data || {})); }
+  catch (e) { log("(Fusion 밖에서 열림: " + action + ")"); }
+}
+function log(line) { const p = $("log"); p.textContent += line + "\n"; p.scrollTop = p.scrollHeight; }
+function status(text, cls) { const s = $("status"); s.textContent = text; s.className = cls || ""; }
+function esc(t) { return String(t).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+function addAlert(a) {
+  if (!a || a.severity === "INFO" && !a.code) return;          // routine progress stays in the log
+  const d = document.createElement("div");
+  d.className = "al sev-" + a.severity;
+  d.innerHTML = "<b>" + esc((a.code ? "[" + a.code + "] " : "") + a.title) + "</b><div class='m'>" + esc(a.message || "") + "</div>";
+  $("alerts").appendChild(d);
+  $("alerts").scrollTop = $("alerts").scrollHeight;
+}
+
+function showQuestions(qs) {
+  const box = $("questions"); box.innerHTML = "";
+  qs.forEach(q => {
+    const d = document.createElement("div"); d.className = "q"; d.dataset.id = q.id;
+    let html = "<div class='t'>" + esc(q.text || q.message) + "</div><div class='m sub'>[" + esc(q.code) + "] " + esc(q.message) + "</div>";
+    if (q.options.length) {
+      q.options.forEach((o, i) => {
+        html += "<label><input type='radio' name='q" + q.id + "' value='" + (i + 1) + "'> " + esc(o) + "</label>";
+      });
+      html += "<input type='number' step='any' placeholder='값 (mm)' class='val'>";
+    } else {
+      html += "<input type='number' step='any' placeholder='값 (mm)' class='val'>";
+    }
+    d.innerHTML = html; box.appendChild(d);
+  });
+  $("qcard").classList.remove("hidden");
+}
+
+$("pick").onclick = () => send("pick");
+$("rerun").onclick = () => send("rerun");
+$("folder").onclick = () => send("open_folder", {path: outDir});
+$("send").onclick = () => {
+  const answers = [];
+  document.querySelectorAll("#questions .q").forEach(d => {
+    const r = d.querySelector("input[type=radio]:checked");
+    const v = d.querySelector(".val").value;
+    if (r) answers.push({id: +d.dataset.id, answer: r.value, value: v || null});
+    else if (v) answers.push({id: +d.dataset.id, answer: v});
+  });
+  $("qcard").classList.add("hidden");
+  send("answers", {answers});
+};
+
+window.fusionJavaScriptHandler = {
+  handle: function (action, raw) {
+    let data = {};
+    try { data = JSON.parse(raw); } catch (e) {}
+    if (action === "hello") { log("프로젝트: " + data.root + "\nPython: " + data.python); }
+    else if (action === "started") {
+      $("alerts").innerHTML = ""; $("log").textContent = ""; $("qcard").classList.add("hidden");
+      $("file").textContent = data.label; status("실행 중…", ""); $("pick").disabled = true;
+      log("$ " + data.cmd);
+    }
+    else if (action === "log") { log(data.line); }
+    else if (action === "alert") { addAlert(data); }
+    else if (action === "done") {
+      $("pick").disabled = false; $("rerun").disabled = false;
+      outDir = data.out_dir; $("folder").disabled = !outDir;
+      if (data.code === 0) status("✅ 완료 · 치수 검증 " + data.passed + "/" + data.total + " 통과", "ok");
+      else if (data.code === 1) status("🔴 문제 있음 · 치수 검증 " + (data.passed ?? "-") + "/" + (data.total ?? "-"), "err");
+      else if (data.code === 2) { status("🟠 확인이 필요한 값이 있습니다", "warn"); if (data.questions) showQuestions(data.questions); }
+      else if (data.code === 3) status("🔴 Fusion 브리지에 연결하지 못했습니다", "err");
+      else status("종료 코드 " + data.code, "err");
+    }
+    return "OK";
+  }
+};
+window.addEventListener("load", () => setTimeout(() => send("ready"), 300));
+</script>
+</body>
+</html>

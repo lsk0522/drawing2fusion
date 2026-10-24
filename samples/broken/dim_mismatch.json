@@ -1,0 +1,23 @@
+{
+  "schema_version": "0.1",
+  "part": { "name": "broken_dim_mismatch",
+            "note": "Spec passes validation, but two features were transcribed wrong: the extrude uses T+1 and the hole uses Ø6. Verification must catch both (E401, E402/E403)." },
+  "parameters": {
+    "L":      { "value": 80,  "source": { "type": "drawing", "confidence": 0.98 } },
+    "W":      { "value": 40,  "source": { "type": "drawing", "confidence": 0.98 } },
+    "T":      { "value": 6,   "source": { "type": "drawing", "confidence": 0.95 } },
+    "hole_d": { "value": 6.6, "source": { "type": "drawing", "label": "2-Ø6.6", "confidence": 0.9 } }
+  },
+  "features": [
+    { "id": "sk_base", "type": "sketch", "plane": "XY",
+      "entities": [ { "kind": "rect", "corner": [0, 0], "size": ["L", "W"] } ] },
+    { "id": "ex_base", "type": "extrude", "profile": "sk_base", "distance": "T+1" },
+    { "id": "h_mount", "type": "hole", "face": { "plane": "XY", "offset": "T+1" },
+      "positions": [[10, 20], [70, 20]], "diameter": 6, "depth": "through_all" }
+  ],
+  "checks": [
+    { "id": "c_bbox",   "kind": "bbox",          "expected": ["L", "W", "T"] },
+    { "id": "c_hole_n", "kind": "hole_count",    "diameter": "hole_d", "expected": 2 },
+    { "id": "c_hole_d", "kind": "hole_diameter", "feature": "h_mount", "expected": "hole_d" }
+  ]
+}

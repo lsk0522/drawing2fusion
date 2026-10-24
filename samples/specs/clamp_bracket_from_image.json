@@ -1,0 +1,125 @@
+{
+  "schema_version": "0.1",
+  "part": {
+    "name": "clamp_bracket",
+    "drawing": { "file": "samples/drawings/images/clamp_bracket.png", "units": "mm", "projection": "third",
+                 "reader": "manual vision read (stand-in for the Phase 4 image reader)" },
+    "note": "Origin: X=0 on the centre block axis, Y=0 on section line A-A, Z=0 at the bottom. Top view above front view (third angle)."
+  },
+  "parameters": {
+    "B":          { "value": 80,  "source": { "type": "drawing", "view": "front", "label": "80", "confidence": 0.95 } },
+    "BH":         { "value": 85,  "source": { "type": "drawing", "view": "front", "label": "85", "confidence": 0.95 } },
+    "wall":       { "value": 10,  "source": { "type": "drawing", "view": "front", "label": "10 (top / side wall)", "confidence": 0.9 } },
+    "cav_r":      { "value": 10,  "source": { "type": "drawing", "view": "top",   "label": "R10", "confidence": 0.9 } },
+    "top_d":      { "value": 30,  "source": { "type": "drawing", "view": "front", "label": "Ø30", "confidence": 0.95 } },
+    "top_h":      { "value": 5,   "source": { "type": "drawing", "view": "front", "label": "5", "confidence": 0.9 } },
+    "drill20":    { "value": 20,  "source": { "type": "drawing", "view": "top",   "label": "20 Drill", "confidence": 0.95 } },
+    "back_d":     { "value": 30,  "source": { "type": "drawing", "view": "top",   "label": "Ø30", "confidence": 0.95 } },
+    "back_len":   { "value": 20,  "source": { "type": "drawing", "view": "top",   "label": "20", "confidence": 0.95 } },
+    "hole_z":     { "value": 55,  "source": { "type": "drawing", "view": "front", "label": "55", "confidence": 0.95 } },
+    "groove_w":   { "value": 30,  "source": { "type": "drawing", "view": "front", "label": "30", "confidence": 0.95 } },
+    "groove_h":   { "value": 20,  "source": { "type": "drawing", "view": "front", "label": "20", "confidence": 0.95 } },
+    "LB_x":       { "value": 100, "source": { "type": "drawing", "view": "top",   "label": "100", "confidence": 0.95 } },
+    "LB_d":       { "value": 60,  "source": { "type": "drawing", "view": "front", "label": "Ø60", "confidence": 0.95 } },
+    "LB_h":       { "value": 45,  "source": { "type": "drawing", "view": "front", "label": "45", "confidence": 0.95 } },
+    "arm_t":      { "value": 30,  "source": { "type": "drawing", "view": "front", "label": "30", "confidence": 0.9 } },
+    "rib_w":      { "value": 10,  "source": { "type": "drawing", "view": "top",   "label": "10", "confidence": 0.9 } },
+    "pocket_w":   { "value": 40,  "source": { "type": "drawing", "view": "top",   "label": "R20 (dashed)", "confidence": 0.85 } },
+    "pocket_end": { "value": 50,  "source": { "type": "inferred", "reason": "숨은선 끝이 블록에서 10 떨어짐 (top view '10') → X=-50" }, "confidence": 0.85 },
+    "pocket_h":   { "value": 15,  "source": { "type": "drawing", "view": "front", "label": "15", "confidence": 0.9 } },
+    "RB_x":       { "value": 110, "source": { "type": "drawing", "view": "top",   "label": "110", "confidence": 0.95 } },
+    "RB_y":       { "value": 30,  "source": { "type": "drawing", "view": "top",   "label": "30 / 30", "confidence": 0.95 } },
+    "lug_d":      { "value": 40,  "source": { "type": "drawing", "view": "top",   "label": "R20", "confidence": 0.95 } },
+    "rb_d":       { "value": 30,  "source": { "type": "drawing", "view": "front", "label": "Ø30", "confidence": 0.95 } },
+    "rb_h":       { "value": 10,  "source": { "type": "drawing", "view": "front", "label": "10", "confidence": 0.9 } },
+    "slot_len":   { "value": 60,  "source": { "type": "drawing", "view": "top",   "label": "60", "confidence": 0.9 } },
+    "slot_w":     { "value": 10,  "source": { "type": "drawing", "view": "top",   "label": "10", "confidence": 0.9 } },
+    "drill10":    { "value": 10,  "source": { "type": "drawing", "view": "top",   "label": "10 Drill, 20 C'Bore, 15 Deep, 2 Holes", "confidence": 0.95 } },
+    "cb_d":       { "value": 20,  "source": { "type": "drawing", "view": "top",   "label": "20 C'Bore", "confidence": 0.95 } },
+    "cb_h":       { "value": 15,  "source": { "type": "drawing", "view": "top",   "label": "15 Deep", "confidence": 0.95 } }
+  },
+  "features": [
+    { "id": "sk_block", "type": "sketch", "plane": "XY",
+      "entities": [ { "kind": "rect", "corner": ["-B/2", "-B/2"], "size": ["B", "B"] } ] },
+    { "id": "ex_block", "type": "extrude", "profile": "sk_block", "distance": "BH", "operation": "new_body" },
+
+    { "id": "sk_cavity", "type": "sketch", "plane": "XY",
+      "entities": [ { "kind": "rect", "corner": ["-(B/2-wall)", "-(B/2-wall)"], "size": ["B-2*wall", "B-2*wall"] } ] },
+    { "id": "ex_cavity", "type": "extrude", "profile": "sk_cavity", "distance": "BH-wall", "direction": "positive", "operation": "cut" },
+    { "id": "f_cavity", "type": "fillet", "edges": { "select": "vertical_edges:ex_cavity", "expect": 4 }, "radius": "cav_r" },
+
+    { "id": "sk_groove", "type": "sketch", "plane": "XZ",
+      "entities": [ { "kind": "rect", "corner": ["-groove_w/2", 0], "size": ["groove_w", "groove_h"] } ] },
+    { "id": "ex_groove", "type": "extrude", "profile": "sk_groove", "distance": "through_all", "direction": "symmetric", "operation": "cut" },
+
+    { "id": "sk_top_boss", "type": "sketch", "plane": "XY", "offset": "BH",
+      "entities": [ { "kind": "circle", "center": [0, 0], "diameter": "top_d" } ] },
+    { "id": "ex_top_boss", "type": "extrude", "profile": "sk_top_boss", "distance": "top_h", "operation": "join" },
+
+    { "id": "sk_back_boss", "type": "sketch", "plane": "XZ", "offset": "B/2",
+      "entities": [ { "kind": "circle", "center": [0, "hole_z"], "diameter": "back_d" } ] },
+    { "id": "ex_back_boss", "type": "extrude", "profile": "sk_back_boss", "distance": "back_len", "direction": "positive", "operation": "join" },
+
+    { "id": "sk_left_boss", "type": "sketch", "plane": "XY",
+      "entities": [ { "kind": "circle", "center": ["-LB_x", 0], "diameter": "LB_d" } ] },
+    { "id": "ex_left_boss", "type": "extrude", "profile": "sk_left_boss", "distance": "LB_h", "operation": "join" },
+
+    { "id": "sk_left_arm", "type": "sketch", "plane": "XY",
+      "entities": [ { "kind": "polyline", "closed": true,
+                      "points": [[-104.748, 29.622], ["-B/2", "B/2"], ["-B/2", "-B/2"], [-104.748, -29.622], ["-LB_x", 0]] } ] },
+    { "id": "ex_left_arm", "type": "extrude", "profile": "sk_left_arm", "distance": "arm_t", "operation": "join" },
+
+    { "id": "sk_rib", "type": "sketch", "plane": "XZ", "offset": "-rib_w/2",
+      "entities": [ { "kind": "polyline", "closed": true,
+                      "points": [[-75, "arm_t"], ["-B/2", "arm_t"], ["-B/2", "BH"], [-75, 38.333]] } ] },
+    { "id": "ex_rib", "type": "extrude", "profile": "sk_rib", "distance": "rib_w", "direction": "positive", "operation": "join" },
+
+    { "id": "sk_left_pocket", "type": "sketch", "plane": "XY",
+      "entities": [ { "kind": "rect", "corner": ["-LB_x", "-pocket_w/2"], "size": ["LB_x-pocket_end", "pocket_w"] },
+                    { "kind": "circle", "center": ["-LB_x", 0], "diameter": "pocket_w" } ] },
+    { "id": "ex_left_pocket", "type": "extrude", "profile": "sk_left_pocket", "distance": "pocket_h", "direction": "positive", "operation": "cut" },
+
+    { "id": "sk_right_arm", "type": "sketch", "plane": "XY",
+      "entities": [ { "kind": "rect", "corner": ["B/2", "-RB_y"], "size": ["RB_x+lug_d/2-B/2", "2*RB_y"] },
+                    { "kind": "circle", "center": ["RB_x", "RB_y"], "diameter": "lug_d" },
+                    { "kind": "circle", "center": ["RB_x", "-RB_y"], "diameter": "lug_d" } ] },
+    { "id": "ex_right_arm", "type": "extrude", "profile": "sk_right_arm", "distance": "arm_t", "operation": "join" },
+
+    { "id": "sk_right_boss", "type": "sketch", "plane": "XY", "offset": "arm_t",
+      "entities": [ { "kind": "circle", "center": ["RB_x", "RB_y"], "diameter": "rb_d" },
+                    { "kind": "circle", "center": ["RB_x", "-RB_y"], "diameter": "rb_d" } ] },
+    { "id": "ex_right_boss", "type": "extrude", "profile": "sk_right_boss", "distance": "rb_h", "operation": "join" },
+
+    { "id": "sk_slit", "type": "sketch", "plane": "XY", "offset": "arm_t",
+      "entities": [ { "kind": "rect", "corner": ["RB_x+lug_d/2-slot_len", "-slot_w/2"], "size": ["slot_len", "slot_w"] } ] },
+    { "id": "ex_slit", "type": "extrude", "profile": "sk_slit", "distance": "through_all", "direction": "negative", "operation": "cut" },
+
+    { "id": "h_left", "type": "hole", "face": { "plane": "XY", "offset": "LB_h" }, "direction": "negative",
+      "positions": [["-LB_x", 0]], "diameter": "drill20", "depth": "through_all" },
+    { "id": "h_top", "type": "hole", "face": { "plane": "XY", "offset": "BH+top_h" }, "direction": "negative",
+      "positions": [[0, 0]], "diameter": "drill20", "depth": "top_h+wall" },
+    { "id": "h_back", "type": "hole", "face": { "plane": "XZ", "offset": "B/2+back_len" }, "direction": "negative",
+      "positions": [[0, "hole_z"]], "diameter": "drill20", "depth": "back_len+wall" },
+    { "id": "h_lugs", "type": "hole", "face": { "plane": "XY", "offset": "arm_t+rb_h" }, "direction": "negative",
+      "positions": [["RB_x", "RB_y"], ["RB_x", "-RB_y"]], "diameter": "drill10",
+      "hole_type": "counterbore", "cb_diameter": "cb_d", "cb_depth": "cb_h", "depth": "through_all" }
+  ],
+  "checks": [
+    { "id": "c_bbox", "kind": "bbox",
+      "expected": ["LB_x+LB_d/2+RB_x+lug_d/2", "RB_y+lug_d/2+B/2+back_len", "BH+top_h"] },
+    { "id": "c_d10_n",  "kind": "hole_count",     "diameter": "drill10", "expected": 2 },
+    { "id": "c_d10_p",  "kind": "hole_positions", "diameter": "drill10", "expected": [["RB_x", "RB_y"], ["RB_x", "-RB_y"]] },
+    { "id": "c_d20_n",  "kind": "hole_count",     "diameter": "drill20", "expected": 5, "note": "left drill, top drill, back drill, 2 counterbores" },
+    { "id": "c_d20_z",  "kind": "hole_positions", "diameter": "drill20", "expected": [["-LB_x", 0], [0, 0], ["RB_x", "RB_y"], ["RB_x", "-RB_y"]] },
+    { "id": "c_d20_y",  "kind": "hole_positions", "diameter": "drill20", "axis": "Y", "expected": [[0, "hole_z"]] },
+    { "id": "c_vol",    "kind": "volume", "expected": null }
+  ],
+  "notes": [
+    { "text": "오른쪽 팔과 귀 사이 R15 오목 필렛", "applied": false, "reason": "오목 모서리 선택기 없음 — 모델에 없음" },
+    { "text": "왼쪽 바닥 포켓은 숨은선이 팔 테이퍼를 따라 10 안쪽으로 그려짐", "applied": false, "reason": "R20 장공 + 사각형(폭 40)으로 근사" },
+    { "text": "가운데 아래쪽 폭 10 숨은선 쌍 (정면도 X≈0, Z 20~45)", "applied": false, "reason": "공동 안쪽 빈 공간과 겹쳐 의미가 불분명 — 단면 A-A/B-B가 없어 해석 보류" },
+    { "text": "오른쪽 슬릿 깊이", "applied": false, "reason": "정면도에서 깊이를 확정하지 못해 관통으로 가정" },
+    { "text": "위쪽 20 Drill 깊이", "applied": false, "reason": "보스+윗벽 두께(5+10)까지만 뚫어 공동과 연결" },
+    { "text": "섹션 표시 A-A, B-B", "applied": false, "reason": "단면도가 주어지지 않음" }
+  ]
+}

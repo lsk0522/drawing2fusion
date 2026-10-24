@@ -1,0 +1,47 @@
+{
+  "bbox": [
+    80.0,
+    40.0,
+    30.0
+  ],
+  "holes": [
+    {
+      "axis": "Z",
+      "diameter": 6.0,
+      "positions": [
+        [
+          40,
+          30
+        ]
+      ]
+    },
+    {
+      "axis": "Y",
+      "diameter": 10.0,
+      "positions": [
+        [
+          20,
+          15
+        ]
+      ],
+      "depth": "through"
+    },
+    {
+      "axis": "X",
+      "diameter": 8.0,
+      "positions": [
+        [
+          20,
+          15
+        ]
+      ],
+      "depth": 25.0
+    }
+  ],
+  "volume": 90753.54026850505,
+  "source_dxf": "block_side_holes.dxf",
+  "pdf": {
+    "dash_style": "array",
+    "paper_scale": 1.0
+  }
+}

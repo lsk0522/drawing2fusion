@@ -1,0 +1,38 @@
+{
+  "bbox": [
+    80.0,
+    40.0,
+    6.0
+  ],
+  "holes": [
+    {
+      "axis": "Z",
+      "diameter": 6.6,
+      "positions": [
+        [
+          10.0,
+          10.0
+        ],
+        [
+          10.0,
+          30.0
+        ],
+        [
+          70.0,
+          10.0
+        ],
+        [
+          70.0,
+          30.0
+        ]
+      ]
+    }
+  ],
+  "fillet": 3.0,
+  "volume": 18332.55934735162,
+  "source_dxf": "plate_holes.dxf",
+  "pdf": {
+    "dash_style": "array",
+    "paper_scale": 1.0
+  }
+}

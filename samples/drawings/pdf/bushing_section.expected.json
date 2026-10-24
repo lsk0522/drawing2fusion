@@ -1,0 +1,45 @@
+{
+  "kind": "turned",
+  "bbox": [
+    50,
+    40,
+    40
+  ],
+  "profile": [
+    [
+      0,
+      9
+    ],
+    [
+      1,
+      8
+    ],
+    [
+      50,
+      8
+    ],
+    [
+      50,
+      12.5
+    ],
+    [
+      10,
+      12.5
+    ],
+    [
+      10,
+      20
+    ],
+    [
+      0,
+      20
+    ]
+  ],
+  "volume": 22122.048269028128,
+  "keyway": null,
+  "source_dxf": "bushing_section.dxf",
+  "pdf": {
+    "dash_style": "array",
+    "paper_scale": 1.0
+  }
+}
