@@ -1,0 +1,13 @@
+# keep checkouts byte-identical across Windows / Linux (code hash, expr.py copy check)
+*.py    text eol=lf
+*.md    text eol=lf
+*.json  text eol=lf
+*.html  text eol=lf
+*.yml   text eol=lf
+*.toml  text eol=lf
+*.bat   text eol=crlf
+*.ps1   text eol=crlf
+*.dxf   -text
+*.pdf   binary
+*.png   binary
+*.f3d   binary

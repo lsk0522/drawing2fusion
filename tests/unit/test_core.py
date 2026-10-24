@@ -85,7 +85,7 @@ class CodeHashTests(unittest.TestCase):
         src = os.path.join(ROOT, "addin", "Drawing2Fusion", "d2f_addin")
         for n in os.listdir(src):
             if n.endswith(".py"):
-                data = open(os.path.join(src, n), "rb").read().replace(b"\n", b"\r\n")
+                data = open(os.path.join(src, n), "rb").read().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
                 open(os.path.join(d, n), "wb").write(data)
         self.assertEqual(addin_code_hash(d), addin_code_hash(src))
         shutil.rmtree(d)

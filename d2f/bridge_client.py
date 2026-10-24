@@ -120,6 +120,9 @@ class BridgeClient:
     def new_document(self):
         return self._request("POST", "/new_document", {})
 
+    def close_document(self):
+        return self._request("POST", "/close_document", {})
+
     def build(self, spec, options=None, timeout_s=300.0):
         return self._request("POST", "/build", {"spec": spec, "options": options or {}}, timeout_s)
 

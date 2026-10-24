@@ -89,6 +89,9 @@ MUTATIONS = [
     ("plate_holes", "구멍 하나 위치 X 10→13", _feature("h1", lambda f: f["positions"].__setitem__(0, [13, 10])), "E404"),
     ("bushing_section", "몸통 길이 L4 40→45", _set_param("L4", 45), "E406"),
     ("gear_blank_section", "바깥 지름 D4 100→110", _set_param("D4", 110), "E406"),
+    ("gear_blank_section", "안쪽 웹 지름 D3 80→70 (바깥 모양은 그대로)", _set_param("D3", 70), "E410"),
+    ("plate_tapped", "탭(M6) 나사 빠뜨림", _feature("h1", lambda f: f.pop("thread")), "E409"),
+    ("block_side_holes", "옆 구멍(Y 방향) 높이 Z 15→18", _feature("h2", lambda f: f["positions"].__setitem__(0, [20, 18])), "E404"),
     ("pulley_keyway_section", "키홈을 반대쪽(−Z)에 가공",
      _feature("sk_key", lambda f: f["entities"][0].__setitem__("corner", ["-key_w/2", "-(key_t - D1/2)"])), "E408"),
 ]
@@ -97,11 +100,11 @@ MUTATIONS = [
 def mutation_cases():
     import shutil
     out = []
-    for part, what, fn, code in MUTATIONS:
+    for k, (part, what, fn, code) in enumerate(MUTATIONS):
         src = os.path.join(OUT, part)
         if not os.path.exists(os.path.join(src, "part-spec.json")):
             continue
-        dst = os.path.join(ROOT, "out", "regress_mut", part)
+        dst = os.path.join(ROOT, "out", "regress_mut", "%02d_%s" % (k, part))    # one folder per mutation
         os.makedirs(dst, exist_ok=True)
         spec = json.load(open(os.path.join(src, "part-spec.json"), encoding="utf-8"))
         fn(spec)
@@ -117,10 +120,10 @@ def mutation_cases():
 def run_case(c, py):
     if c.get("build"):
         cmd = [py, "-m", "d2f", "build", c["path"], "--out", os.path.join(ROOT, "out", "regress_mut", "_build"),
-               "--no-snapshot", "--export", "", "--no-fusion-alert"]
+               "--no-snapshot", "--export", "", "--no-fusion-alert", "--close-after"]
     else:
         cmd = [py, "-m", "d2f", "run", c["path"], "--out", c.get("out", OUT), "--no-snapshot", "--export", "",
-               "--no-fusion-alert"]
+               "--no-fusion-alert", "--close-after"]
     if not c.get("build"):
         cmd.append("--ask" if c.get("answers") else "--no-ask")
     env = dict(os.environ, D2F_NO_OPEN="1", PYTHONIOENCODING="utf-8")
@@ -194,6 +197,8 @@ def main(argv=None):
     os.makedirs(OUT, exist_ok=True)
     results = []
     todo = cases(a.only)
+    if not todo and not a.no_mutation:
+        todo = [m for m in mutation_cases() if not a.only or a.only in m["name"]]
     k = 0
     while todo:
         c = todo.pop(0)

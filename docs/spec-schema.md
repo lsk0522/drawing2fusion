@@ -188,3 +188,17 @@ Fusion의 XZ/YZ 스케치 축은 방향이 다르지만(XZ는 y가 −Z, YZ는 x
 - `volume`에 `"rel_tol"` (기본 1%)
 - `plane` — `{ "kind": "plane", "axis": "Z", "at": "key_t - d_bore/2" }`: 그 축에 수직인 평면이 좌표 `at`(mm)에 있어야 통과 (E408).
   부피·bbox가 같아도 **방향이 틀린 형상**(키홈이 −Y 쪽에 파임, 포켓이 반대 면에 생김)을 잡습니다. 측정값 `bodies[].planes`
+
+### v0.3 추가
+
+- **옆 구멍:** `hole.face.plane` 에 `"XZ"`(Y 방향 구멍, positions = [X, Z]) / `"YZ"`(X 방향, positions = [Y, Z]).
+  `offset` 0 이면 앞(왼)면에서 `direction: "positive"`, `"W"`/`"L"` 이면 뒤(오른)면에서 `"negative"`.
+- **나사:** `hole.thread = {"designation": "M6x1", "size": 6, "pitch": 1, "class": "6H", "modeled": false}` —
+  구멍 `diameter`는 탭 드릴 지름(호칭 − 피치). Fusion 나사 피처(기본은 표시용 cosmetic)를 구멍 면에 붙입니다.
+  Fusion이 나사 구멍을 규격 골지름(M6x1 6H → Ø5.035)으로 바꾸므로 구멍 검사에 `"diameter_tol": 0.3`.
+- **공차:** 파라미터에 `"tolerance": [하한, 상한]`(mm, 편차)과 `"fit": "H7"`. 검사 허용 범위로 쓰임
+  (모델은 호칭 치수로 만들고, 측정 잡음 1 µm는 항상 허용).
+- **검사 종류:** `thread` (`designation`, `expected` 개수, E409), `plane` (E408),
+  `diameter_tol` (hole_count / hole_positions 의 지름 거르기 허용치).
+- 도면에서 읽은 스펙은 `extract-report.json`의 `silhouettes`(뷰별 도면 선)와 `section_regions`(회전체 단면 재료 영역)로
+  스펙과 무관한 E406 / E410 검사를 자동으로 더 합니다.

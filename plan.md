@@ -108,7 +108,9 @@
 - [x] 회전체 단면도: 해칭 반단면 → revolve, 해칭 안 된 이 포함, 키홈, 연쇄 치수, 경사각 식 ([docs/verification-sections-regression.md](docs/verification-sections-regression.md))
 - [x] 독립 실루엣 검사(E406): 도면 선 영역 vs 모델 투영. 이전에 '통과'로 잘못 보고되던 근사 모델을 잡아냄
 - [x] 회귀 테스트 `tools/regress.py`: 30개 케이스 + 돌연변이 6개, Fusion에서 36/36
-- [ ] 남은 것: 정면·측면도의 원(옆 구멍), 경사·곡선 외곽, 회전체가 아닌 단면도, 나사 표기(M6 → 탭)
+- [x] 옆 구멍(정면·측면도의 원 → Y/X 방향 구멍, 숨은선으로 깊이), 탭 나사(M6 → Fusion 나사 피처), 공차(±, 쌓은 글자, ISO 286)
+- [x] 단면 비교 검사(E410): 모델 축 단면 vs 도면 해칭 영역 — 바깥 모양이 같은 안쪽 실수까지 잡음
+- [ ] 남은 것: 경사·곡선 외곽(지금은 근사 후 실루엣 검사가 실패로 알림), 회전체가 아닌 단면도, 옆 구멍 카운터보어
 
 **완료 기준:** DXF 테스트 세트 10장 중 8장 이상 자동 빌드 + 치수 검증 통과.
 **현재:** 생성 도면 12장(정상 9 / 오류 3) — 정상은 전부 통과(실루엣 0.99+), 오류는 질문으로 멈추고 답하면 통과. 공개 도면 3장: 베벨기어 자동 회전체 8/8, 플랜지는 질문, 포크는 근사라서 실루엣 검사가 실패로 보고.
@@ -116,21 +118,22 @@
 ### Phase 4 — PDF / 이미지 입력 (2~3주)
 
 - [x] 사전 실험: 휴대폰 캡처 도면을 Claude가 직접 판독 → 스펙 → 빌드 13/13 통과 ([docs/verification-image-test.md](docs/verification-image-test.md))
-- [ ] PDF 벡터 추출 시도 (벡터 PDF면 DXF 경로와 동일하게 처리)
+- [x] **벡터 PDF**: 선 굵기·점선 패턴·화살표 쌍·축척·해칭을 복원해 DXF 경로와 같은 해석 ([docs/pdf-reading.md](docs/pdf-reading.md)), PDF 9장 회귀 통과
 - [x] **채팅 판독 절차 (API 키 없이)**: 도면 첨부 → Claude 판독·검산·질문 → 스펙 → run.bat → 비교 이미지 ([docs/image-reading.md](docs/image-reading.md), `tools/compare_image.py`)
 - [x] 단면도 회전체 시험: 베벨기어 블랭크 7/7, 부피 실측 = 계산값. 판독 실수(키홈 방향)를 잡는 `plane` 검사(E408) 추가
 - [ ] 래스터 도면 자동 판독(API 키 사용 시): 채팅 판독과 같은 스펙을 코드로 생성
 - [ ] 치수마다 `confidence`와 도면 내 위치(`bbox`) 기록
 - [ ] OCR(예: PaddleOCR) 결과와 LLM 결과 교차검증, 불일치 시 `BLOCK` + 질문
-- [ ] 사용자 확인 UI: 도면 위에 읽은 치수를 겹쳐 보여주고 수정 가능하게
+- [x] Fusion 패널: 도면 열기 → 진행·알림·결과, 질문 폼으로 답하고 계속 빌드 ([docs/ui-and-mcp.md](docs/ui-and-mcp.md))
+- [ ] 사용자 확인 UI: 도면 위에 읽은 치수를 겹쳐 보여주기
 
 **완료 기준:** 이미지 도면 10장 중 7장 이상, 사용자 질문 2회 이하로 빌드 성공.
 
 ### Phase 5 — 에이전트 루프 + MCP (2주)
 
-- [ ] 검증 실패 시 원인 분류 → 스펙 수정안 제시 → 재빌드 (최대 N회, 사용자 승인 옵션)
-- [ ] 자체 MCP 서버로 노출: `extract_spec`, `build`, `verify`, `snapshot`, `ask_user`
-- [ ] Claude Desktop / Claude Code에서 "이 도면 모델링해줘" 한 마디로 전체 파이프라인 실행
+- [x] 자체 MCP 서버(`d2f/mcp_server.py`, 패키지 불필요): extract / questions / answer / get·put spec / validate / build / report / compare_image
+- [x] Claude Desktop(`mcp_install.bat`) / Claude Code(`.mcp.json`) 연결 → "이 도면 모델링해줘" → 실패 검사를 보고 스펙 수정 → 재빌드 루프를 Claude가 수행
+- [ ] 실제 도면 20장으로 루프 성공률 측정
 
 **완료 기준:** 테스트 세트 20장 기준 성공 기준(1장) 달성.
 

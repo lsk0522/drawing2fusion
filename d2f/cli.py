@@ -208,6 +208,11 @@ def cmd_build(args, measure_only=False):
         except BridgeError as e:
             alert(e.code, "WARN", "export", "내보내기 실패", "%s: %s" % (fmt, e))
     report["exports"] = exports
+    if getattr(args, "close_after", False) and not args.reuse_document:
+        try:
+            client.close_document()
+        except BridgeError as e:
+            alert(e.code, "WARN", "export", "문서 닫기 실패", str(e))
 
     # 5. report -------------------------------------------------------------------
     passed = sum(1 for r in rows if r["pass"])
@@ -332,6 +337,8 @@ def main(argv=None):
                         help="build into the active document instead of a new one")
         pb.add_argument("--export", default="f3d", help="comma list: f3d,step,stl ('' to skip)")
         pb.add_argument("--no-snapshot", action="store_true")
+        pb.add_argument("--close-after", action="store_true",
+                        help="close the new Fusion document when done (batch / regression runs)")
         pb.add_argument("--no-fusion-alert", action="store_true")
         pb.add_argument("--force", action="store_true", help="build even with BLOCK issues")
         pb.add_argument("--min-confidence", type=float, default=validator.DEFAULT_MIN_CONFIDENCE)

@@ -38,6 +38,7 @@ ROUTES = {
     "/export": "export",
     "/alert": "alert",
     "/reload": "reload",
+    "/close_document": "close_document",
 }
 
 

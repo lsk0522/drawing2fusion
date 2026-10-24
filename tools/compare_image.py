@@ -151,7 +151,17 @@ def build_sheet(drawing_path, out_dir, dest=None, width=2000, crop=None, trim=Tr
     col = (width - 2 * margin - gap) // 2
     cell = (col - gap) // 2
 
-    drawing = Image.open(drawing_path).convert("RGB")
+    if drawing_path.lower().endswith(".pdf"):
+        # vector PDF drawing: render the first page (PyMuPDF is installed by the PDF reader)
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from d2f.extract.pdf_reader import ensure_pymupdf
+        pm = ensure_pymupdf()
+        pix = pm.open(drawing_path)[0].get_pixmap(dpi=150)
+        import io as _io
+        drawing = Image.open(_io.BytesIO(pix.tobytes("png"))).convert("RGB")
+        trim = False
+    else:
+        drawing = Image.open(drawing_path).convert("RGB")
     if crop:
         drawing = drawing.crop(tuple(int(v) for v in crop.split(",")))
     elif trim:
@@ -207,7 +217,7 @@ def build_sheet(drawing_path, out_dir, dest=None, width=2000, crop=None, trim=Tr
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("drawing", help="원본 도면 이미지 (png/jpg)")
+    p.add_argument("drawing", help="원본 도면 이미지 (png/jpg) 또는 벡터 PDF")
     p.add_argument("out_dir", help="빌드 결과 폴더 (out/<이름>)")
     p.add_argument("-o", "--output")
     p.add_argument("--width", type=int, default=2000)

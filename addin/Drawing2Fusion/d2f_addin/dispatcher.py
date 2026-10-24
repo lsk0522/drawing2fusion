@@ -67,6 +67,19 @@ def _new_document(app, args):
     return {"ok": True, "active_document": app.activeDocument.name}
 
 
+def _close_document(app, args):
+    """Close the active document without saving (regression runs would otherwise pile up
+    dozens of open documents). Only documents this add-in created are closed."""
+    doc = app.activeDocument
+    if doc is None:
+        return {"ok": True, "closed": None}
+    if doc.isSaved and not args.get("force"):
+        return {"ok": False, "code": "E506", "error": "active document '%s' is a saved file - not closing it" % doc.name}
+    name = doc.name
+    doc.close(False)
+    return {"ok": True, "closed": name}
+
+
 def _build(app, args):
     return builder.build(app, args["spec"], args.get("options"))
 
@@ -119,4 +132,5 @@ _COMMANDS = {
     "export": _export,
     "alert": _alert,
     "reload": _reload,
+    "close_document": _close_document,
 }
