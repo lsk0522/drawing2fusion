@@ -130,7 +130,14 @@ Fusion 엣지 ID는 빌드마다 바뀔 수 있으므로, 셀렉터 → 엣지 �
 ```json
 { "id": "p_holes", "type": "pattern_rect", "features": ["h_mount"], "x": { "count": 3, "pitch": 20 }, "y": { "count": 1 } }
 { "id": "p_bolt",  "type": "pattern_circ", "features": ["h_pcd"], "axis": "Z", "count": 6, "angle": 360 }
+{ "id": "pc1",     "type": "pattern_circ", "features": ["h1"], "axis": "Z", "center": ["L/2", "W/2"], "count": 6 }
 ```
+
+`pattern_circ.center`: 축이 지나는 점(축에 수직인 두 월드 좌표: Z축 → (X, Y), Y축 → (X, Z), X축 → (Y, Z)). 없으면 원점.
+빌더는 그 점을 지나는 작도선을 스케치로 만들어 회전축으로 씁니다.
+
+나사(`hole.thread`): ISO 미터 `{ "designation": "M6x1", "size": 6, "pitch": 1, "class": "6H" }`,
+인치 `{ "designation": "1/4-20 UNC", "type": "ANSI Unified Screw Threads", "size_label": "1/4", "class": "2B" }`.
 
 ## 5. checks — 사후 검증 대상
 

@@ -304,6 +304,41 @@ def _sketch_boxes(f, resolved):
     return boxes
 
 
+def hole_instances(features, hole, resolved):
+    """All (u, v) positions of a hole feature, with the rectangular / circular patterns that copy it.
+    Circular patterns about an XY-hole axis "Z" use their center (default origin)."""
+    import math
+    pts = []
+    for pos in hole.get("positions") or []:
+        u, v = _safe(pos[0], resolved), _safe(pos[1], resolved)
+        if u is not None and v is not None:
+            pts.append((u, v))
+    for f in features:
+        if hole.get("id") not in (f.get("features") or []):
+            continue
+        if f.get("type") == "pattern_rect":
+            out = []
+            dx, dy = f.get("x") or {}, f.get("y") or {}
+            nx, px = int(_safe(dx.get("count", 1), resolved) or 1), _safe(dx.get("pitch", 0), resolved) or 0.0
+            ny, py = int(_safe(dy.get("count", 1), resolved) or 1), _safe(dy.get("pitch", 0), resolved) or 0.0
+            for (u, v) in pts:
+                out += [(u + i * px, v + j * py) for i in range(nx) for j in range(ny)]
+            pts = out
+        elif f.get("type") == "pattern_circ":
+            c = [_safe(x, resolved) for x in (f.get("center") or [0, 0])]
+            n = int(_safe(f.get("count", 1), resolved) or 1)
+            ang = _safe(f.get("angle", 360), resolved) or 360.0
+            step = ang / n if abs(ang - 360) < 1e-9 else ang / max(n - 1, 1)
+            out = []
+            for (u, v) in pts:
+                for k in range(n):
+                    t = math.radians(step * k)
+                    du, dv = u - c[0], v - c[1]
+                    out.append((c[0] + du * math.cos(t) - dv * math.sin(t), c[1] + du * math.sin(t) + dv * math.cos(t)))
+            pts = out
+    return pts
+
+
 def _geometry_checks(features, resolved):
     """Cheap sanity checks that predict build failures (E205). Only XY sketches are considered."""
     issues = []
@@ -319,10 +354,7 @@ def _geometry_checks(features, resolved):
         where = {"feature": f.get("id")}
         if f.get("type") == "hole" and str((f.get("face") or {}).get("plane", "XY")).upper() == "XY":
             d = _safe(f.get("diameter"), resolved) or 0.0
-            for k, pos in enumerate(f.get("positions") or []):
-                x, y = _safe(pos[0], resolved), _safe(pos[1], resolved)
-                if x is None or y is None:
-                    continue
+            for k, (x, y) in enumerate(hole_instances(features, f, resolved)):
                 if x - d / 2 < xmin - 1e-9 or x + d / 2 > xmax + 1e-9 or \
                         y - d / 2 < ymin - 1e-9 or y + d / 2 > ymax + 1e-9:
                     issues.append(_issue("E205", "ERROR", "hole %s[%d] at (%g, %g) Ø%g is outside the "

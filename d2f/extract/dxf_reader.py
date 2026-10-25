@@ -21,6 +21,7 @@ import math
 import os
 import re
 
+from . import annotations
 from . import intersect
 from . import tolerance
 
@@ -139,6 +140,19 @@ def load(path):
             txt = raw.plain_text() if t == "MTEXT" else raw.dxf.text
             texts.append({"text": txt, "pos": tuple(raw.dxf.insert)[:2], "layer": raw.dxf.layer})
             continue
+        if t == "TOLERANCE":                      # feature control frame (GD&T)
+            texts.append({"text": raw.dxf.get("content", ""), "pos": tuple(raw.dxf.insert)[:2],
+                          "layer": raw.dxf.layer, "kind": "fcf"})
+            continue
+        if t == "INSERT":
+            # roughness / datum symbols are often blocks whose values are attributes
+            try:
+                for att in raw.attribs:
+                    if (att.dxf.text or "").strip():
+                        texts.append({"text": att.dxf.text, "pos": tuple(att.dxf.insert)[:2],
+                                      "layer": raw.dxf.layer, "kind": "attrib"})
+            except Exception:
+                pass
         for e in _flatten(raw):
             et = e.dxftype()
             layer = e.dxf.get("layer", "0")
@@ -390,6 +404,11 @@ def dim_text_value(text):
     """Number written in a dimension text -> (value or None for '<>' / no number, multiplier).
     Handles '4-%%c6.6', 'R5', '1.5x45%%d' (chamfer), 'P.C.D 75', '31.83%%p0.1', '(18)'."""
     text = (text or "").strip()
+    th = UNIFIED.search(text)
+    if th:                                                             # "4X 1/4-20 UNC": value = major Ø (mm)
+        lab = _unified(th)
+        if lab:
+            return lab["size"], lab["count"]
     chamfer = re.match(r"\s*(\d+(?:\.\d+)?)\s*[xX×]\s*45", text)     # "1.5x45°" chamfer callout
     if chamfer:
         return float(chamfer.group(1)), 1
@@ -667,6 +686,122 @@ def _parametrize_paths(feats, axes, extents, add_param, params):
     return made
 
 
+def _hole_pattern(points, k, L, W, add_param, params, eps=0.01):
+    """Identical holes on a bolt circle or a full rectangular grid -> one hole + a pattern feature.
+
+    Returns {seed, feature, note} or None. Pitches / PCD become parameters only when a drawing
+    dimension gives them; otherwise the measured value is written as a number."""
+    n = len(points)
+
+    def param_or_number(pname, value, kinds, what):
+        add_param(pname, value, ("top",), kinds, what)
+        if (params[pname].get("source") or {}).get("type") == "inferred":
+            del params[pname]
+            return _r(value), False
+        return pname, True
+
+    def centre_expr(v, full, name):
+        return "%s/2" % name if full and abs(v - full / 2) <= eps else _r(v)
+
+    # ---- bolt circle
+    circ = None
+    if n >= 3:
+        cx = sum(p[0] for p in points) / n
+        cy = sum(p[1] for p in points) / n
+        rs = [math.dist(p, (cx, cy)) for p in points]
+        rm = sum(rs) / n
+        angs = sorted(math.degrees(math.atan2(p[1] - cy, p[0] - cx)) % 360 for p in points)
+        steps = [(angs[(i + 1) % n] - angs[i]) % 360 for i in range(n)]
+        if rm > eps and max(abs(r - rm) for r in rs) <= eps and max(abs(st - 360.0 / n) for st in steps) <= 0.05:
+            circ = (cx, cy, rm, angs)
+    # ---- rectangular grid
+    rect = None
+    xs = sorted({round(p[0], 3) for p in points})
+    ys = sorted({round(p[1], 3) for p in points})
+    if len(xs) * len(ys) == n and (len(xs) > 1 or len(ys) > 1):
+        have = {(round(p[0], 3), round(p[1], 3)) for p in points}
+        even = lambda v: len(v) < 3 or max(abs((v[i + 1] - v[i]) - (v[1] - v[0])) for i in range(len(v) - 1)) <= eps  # noqa: E731
+        if all((x, y) in have for x in xs for y in ys) and even(xs) and even(ys):
+            rect = (xs, ys)
+    if circ and rect:
+        # a square of 4 is both: a P.C.D / circle diameter dimension decides for the bolt circle
+        pname = "pcd%d" % k
+        name, from_dim = param_or_number(pname, 2 * circ[2], ("diameter",), "볼트 원 지름")
+        if not from_dim:
+            circ = None
+        else:
+            params.pop(pname, None)
+    if circ:
+        cx, cy, rm, angs = circ
+        pcd, _ = param_or_number("pcd%d" % k, 2 * rm, ("diameter", "linear"), "볼트 원 지름 (P.C.D)")
+        cxe, cye = centre_expr(cx, L, "L"), centre_expr(cy, W, "W")
+        a0 = min(angs, key=lambda a: min(a, 360 - a))
+        quarter = {0: (1, 0), 90: (0, 1), 180: (-1, 0), 270: (0, -1)}
+        q = next((v for a, v in quarter.items() if abs((a0 - a) % 360) < 1e-6 or abs((a0 - a) % 360 - 360) < 1e-6), None)
+        if q is not None:
+            def off(base, sign):
+                if sign == 0:
+                    return base
+                term = "%s/2" % pcd if isinstance(pcd, str) else _r(rm)
+                if isinstance(base, (int, float)) and isinstance(term, (int, float)):
+                    return _r(base + sign * term)
+                return "%s %s %s" % (base, "+" if sign > 0 else "-", term)
+            seed = [off(cxe, q[0]), off(cye, q[1])]
+        else:
+            seed = [_r(cx + rm * math.cos(math.radians(a0))), _r(cy + rm * math.sin(math.radians(a0)))]
+        feat = {"id": "pc%d" % k, "type": "pattern_circ", "axis": "Z", "center": [cxe, cye],
+                "count": n, "angle": 360}
+        return {"seed": seed, "feature": feat,
+                "note": "구멍 %d개를 P.C.D %.4g 원형 배열로 만듭니다 (중심 %.4g, %.4g)" % (n, 2 * rm, cx, cy)}
+    if rect:
+        xs, ys = rect
+        feat = {"id": "pr%d" % k, "type": "pattern_rect"}
+        if len(xs) > 1:
+            px, _ = param_or_number("px%d" % k, xs[1] - xs[0], ("linear", "aligned"), "구멍 X 간격")
+            feat["x"] = {"count": len(xs), "pitch": px, "axis": "X"}
+        else:
+            feat["x"] = {"count": 1, "pitch": 0, "axis": "X"}
+        if len(ys) > 1:
+            py, _ = param_or_number("py%d" % k, ys[1] - ys[0], ("linear", "aligned"), "구멍 Y 간격")
+            feat["y"] = {"count": len(ys), "pitch": py, "axis": "Y"}
+        sx, _ = param_or_number("hx%d" % k, xs[0], ("linear", "aligned"), "첫 구멍 X 위치")
+        sy, _ = param_or_number("hy%d" % k, ys[0], ("linear", "aligned"), "첫 구멍 Y 위치")
+        return {"seed": [sx, sy], "feature": feat,
+                "note": "구멍 %d개를 %d x %d 직선 배열로 만듭니다" % (n, len(xs), len(ys))}
+    return None
+
+
+def _annotate(spec, texts, report):
+    """GD&T, roughness, general tolerance, hardness, finish -> structured notes + report."""
+    found = annotations.collect(texts)
+    if not found:
+        return
+    notes = spec.setdefault("notes", [])
+    by_text = {}
+    for a, src_text in found:
+        by_text.setdefault(src_text, []).append(a)
+    for src_text, items in by_text.items():
+        note = next((n for n in notes if n.get("text") == src_text and "annotation" not in n), None)
+        entry = {"text": src_text, "applied": False,
+                 "reason": "; ".join(annotations.describe(a) for a in items) + " — 모델은 공칭 치수, 가공 요구로 기록",
+                 "annotation": items if len(items) > 1 else items[0]}
+        if note is not None:
+            note.update(entry)
+        else:
+            notes.append(entry)
+    report["annotations"] = [dict(a, text=t) for a, t in found]
+    general = next((a for a, _ in found if a["kind"] == "general_tolerance"), None)
+    if general:
+        # dimensions without their own tolerance follow the general tolerance (recorded, not judged)
+        for name, p in (spec.get("parameters") or {}).items():
+            src = (p or {}).get("source") or {}
+            if src.get("type") != "drawing" or "tolerance" in p or not isinstance(p.get("value"), (int, float)):
+                continue
+            pm = annotations.iso2768(general["class"], abs(p["value"]))
+            if pm is not None:
+                p["general_tolerance"] = {"standard": "ISO 2768-%s" % general["class"], "plusminus": pm}
+
+
 def _point_in_polygon(p, poly):
     x, y = p
     inside = False
@@ -808,26 +943,84 @@ COARSE_PITCH = {1.6: 0.35, 2: 0.4, 2.5: 0.45, 3: 0.5, 4: 0.7, 5: 0.8, 6: 1.0, 8:
                 14: 2.0, 16: 2.0, 18: 2.5, 20: 2.5, 22: 2.5, 24: 3.0, 27: 3.0, 30: 3.5, 36: 4.0}
 
 
+# Unified inch threads (ASME B1.1): "1/4-20 UNC", "4X #10-32 UNF-2B", "3/8-16UNC"
+UNIFIED = re.compile(r"(?:(\d+)\s*[xX×]\s*)?(#\s*\d{1,2}|\d+\s*/\s*\d+|\d+(?:\s+\d+/\d+)?)\s*-\s*(\d{1,3})\s*"
+                     r"(UNC|UNF|UNEF)(?:\s*-\s*([123][AB]))?", re.I)
+NUMBER_SIZE_IN = {0: 0.060, 1: 0.073, 2: 0.086, 3: 0.099, 4: 0.112, 5: 0.125, 6: 0.138, 8: 0.164,
+                  10: 0.190, 12: 0.216}
+# 75 % thread tap drills (inch), the usual shop table
+UNIFIED_TAP_DRILL_IN = {
+    ("#4", 40): 0.089, ("#5", 40): 0.0995, ("#6", 32): 0.1065, ("#8", 32): 0.136, ("#10", 24): 0.1495,
+    ("#10", 32): 0.159, ("#12", 24): 0.177, ("1/4", 20): 0.201, ("1/4", 28): 0.213, ("5/16", 18): 0.257,
+    ("5/16", 24): 0.272, ("3/8", 16): 0.3125, ("3/8", 24): 0.332, ("7/16", 14): 0.368, ("7/16", 20): 0.3906,
+    ("1/2", 13): 0.4219, ("1/2", 20): 0.4531, ("9/16", 12): 0.4844, ("5/8", 11): 0.5312, ("5/8", 18): 0.5781,
+    ("3/4", 10): 0.6562, ("3/4", 16): 0.6875, ("7/8", 9): 0.7656, ("1", 8): 0.875,
+}
+
+
+def _unified(m):
+    """Regex match -> thread label fields (mm) or None."""
+    size_txt = re.sub(r"\s*/\s*", "/", re.sub(r"\s+", " ", m.group(2).strip())).replace("# ", "#")
+    tpi = int(m.group(3))
+    series = m.group(4).upper()
+    if size_txt.startswith("#"):
+        major_in = NUMBER_SIZE_IN.get(int(size_txt[1:]))
+    else:
+        whole, _, frac = size_txt.partition(" ")
+        try:
+            if "/" in whole and not frac:
+                a, b = whole.split("/")
+                major_in = int(a) / int(b)
+            else:
+                major_in = int(whole) + (int(frac.split("/")[0]) / int(frac.split("/")[1]) if frac else 0)
+        except (ValueError, ZeroDivisionError):
+            major_in = None
+    if not major_in or tpi <= 0:
+        return None
+    drill_in = UNIFIED_TAP_DRILL_IN.get((size_txt, tpi)) or (major_in - 1.0 / tpi)
+    return {"size": round(major_in * 25.4, 4), "pitch": round(25.4 / tpi, 4), "drill": round(drill_in * 25.4, 4),
+            "type": "ANSI Unified Screw Threads", "size_label": size_txt,
+            "designation": "%s-%d %s" % (size_txt, tpi, series), "class": (m.group(5) or "2B").upper(),
+            "count": int(m.group(1)) if m.group(1) else 1}
+
+
+def _metric(m):
+    size = float(m.group(2))
+    pitch = float(m.group(3)) if m.group(3) else (COARSE_PITCH.get(size) or COARSE_PITCH.get(int(size)))
+    if not pitch:
+        return None
+    return {"size": size, "pitch": pitch, "drill": round(size - pitch, 4), "type": "ISO Metric profile",
+            "size_label": "%g" % size, "designation": "M%gx%g" % (size, pitch), "class": "6H",
+            "count": int(m.group(1)) if m.group(1) else 1}
+
+
+def parse_thread(text):
+    """Thread callout in a text -> label fields, or None. Inch (UNC/UNF) is tried first because
+    '1/4-20 UNC' must not be read as a metric size."""
+    text = (text or "").replace("%%c", "")
+    m = UNIFIED.search(text)
+    if m:
+        return _unified(m)
+    m = THREAD.search(text)
+    return _metric(m) if m else None
+
+
 def thread_labels(dims, texts):
-    """'4-M6', 'M8x1' in dimension texts / notes -> [{size, pitch, points, dim, text}]."""
+    """'4-M6', 'M8x1', '1/4-20 UNC' in dimension texts / notes -> [{size, pitch, drill, designation, ...}]."""
     out = []
     for d in dims:
-        m = THREAD.search((d.get("text") or "").replace("%%c", ""))
-        if m:
-            out.append({"size": float(m.group(2)), "pitch": float(m.group(3)) if m.group(3) else None,
-                        "points": [p for p in d["points"] if p], "dim": d, "text": d["text"],
-                        "count": int(m.group(1)) if m.group(1) else 1})
+        lab = parse_thread(d.get("text"))
+        if lab:
+            lab.update(points=[p for p in d["points"] if p], dim=d, text=d["text"])
+            out.append(lab)
     for t in texts:
-        m = THREAD.search(t["text"])
-        if m:
-            out.append({"size": float(m.group(2)), "pitch": float(m.group(3)) if m.group(3) else None,
-                        "points": [t["pos"]], "dim": None, "text": t["text"],
-                        "count": int(m.group(1)) if m.group(1) else 1})
+        lab = parse_thread(t["text"])
+        if lab:
+            lab.update(points=[t["pos"]], dim=None, text=t["text"])
+            out.append(lab)
     for lab in out:
-        if lab["pitch"] is None:
-            lab["pitch"] = COARSE_PITCH.get(lab["size"]) or COARSE_PITCH.get(int(lab["size"]))
         lab["used"] = False
-    return [lab for lab in out if lab["pitch"]]
+    return out
 
 
 # ----------------------------------------------------------------------------- spec
@@ -949,6 +1142,7 @@ def extract(path, name=None, tol=None):
     if hatches:
         turned = _try_turned_section(path, name, src, views, segs, texts, title_texts, tol, report, issue)
         if turned is not None:
+            _annotate(turned, texts + title_texts, report)
             return turned, report
     if hatches:
         issue("E208", "BLOCK", "단면도(해칭 영역 %d개)가 있습니다. 단면도 해석은 아직 지원하지 않아 형상이 틀릴 수 있습니다 — "
@@ -1252,7 +1446,7 @@ def extract(path, name=None, tol=None):
     # a callout "4-M6" belongs to the 4 nearest holes whose circle fits M6 (tap drill or nominal)
     thread_of = {}
     for lab in labels:
-        drill = lab["size"] - lab["pitch"]
+        drill = lab["drill"]
         cands = []
         for gi_, g in enumerate(top_groups):
             dd = 2 * min(g["radii"]) * scale
@@ -1285,7 +1479,7 @@ def extract(path, name=None, tol=None):
             thread = thread_of.get(gidx)
             if thread:
                 thread["used"] = True
-                drill = thread["size"] - thread["pitch"]
+                drill = thread["drill"]
                 if cb is not None and abs(cb - thread["size"]) < 0.35:
                     cb = None                       # the bigger circle is the thread, not a counterbore
                 drawn_nominal = abs(d - thread["size"]) < 0.35 and abs(d - drill) >= 0.35
@@ -1307,8 +1501,9 @@ def extract(path, name=None, tol=None):
             spec_h = {"center": (cx, cy), "d": d, "cb": cb, "cb_depth": cb_depth,
                       "depth": depth, "ztop": ztop, "zvol": zvol, "assumed": assumed}
             if thread:
-                spec_h["thread"] = {"designation": "M%gx%g" % (thread["size"], thread["pitch"]), "size": thread["size"],
-                                    "pitch": thread["pitch"], "class": "6H", "modeled": False,
+                spec_h["thread"] = {"designation": thread["designation"], "size": thread["size"],
+                                    "pitch": thread["pitch"], "class": thread["class"], "modeled": False,
+                                    "type": thread["type"], "size_label": thread["size_label"],
                                     "label": thread["text"], "drawn_nominal": drawn_nominal, "dim": thread["dim"]}
             hole_specs.append(spec_h)
     # group identical holes
@@ -1322,9 +1517,12 @@ def extract(path, name=None, tol=None):
         th = h0.get("thread")
         if th:
             dn = "d%d" % (gi + 1)
+            if th["type"].startswith("ISO"):
+                why = "%s 탭 드릴 지름 = %g - 피치 %g" % (th["designation"], th["size"], th["pitch"])
+            else:
+                why = "%s 탭 드릴 지름 %.4g mm (%.4g in, 75%% 나사산 표준 드릴)" % (th["designation"], h0["d"], h0["d"] / 25.4)
             params[dn] = {"value": _r(h0["d"]), "source": {
-                "type": "derived", "reason": "%s 탭 드릴 지름 = %g - 피치 %g (도면 '%s')"
-                % (th["designation"], th["size"], th["pitch"], _label(th["label"], th["size"]))}}
+                "type": "derived", "reason": "%s (도면 '%s')" % (why, _label(th["label"], th["size"]))}}
             if th["dim"] is not None:
                 used_dims.add(id(th["dim"]))
             if th["drawn_nominal"]:
@@ -1363,6 +1561,8 @@ def extract(path, name=None, tol=None):
             feat["hole_type"] = "simple"
         if th:
             feat["thread"] = {k2: th[k2] for k2 in ("designation", "size", "pitch", "class", "modeled")}
+            if not th["type"].startswith("ISO"):
+                feat["thread"].update(type=th["type"], size_label=th["size_label"])
             checks.append({"id": "c_%s_thread" % feat["id"], "kind": "thread", "designation": th["designation"],
                            "expected": len(hs)})
             hole_checks_tol = 0.3   # Fusion resizes a threaded hole to the thread's minor diameter
@@ -1377,6 +1577,13 @@ def extract(path, name=None, tol=None):
                        "expected": feat["positions"]})
         if hole_checks_tol:
             checks[-1]["diameter_tol"] = checks[-2]["diameter_tol"] = hole_checks_tol
+        if not th and len(hs) >= 2:
+            pat = _hole_pattern([h["center"] for h in hs], gi + 1, L, W, add_param, params)
+            if pat:
+                feat["positions"] = [pat["seed"]]
+                pat["feature"]["features"] = [feat["id"]]
+                features.append(pat["feature"])
+                notes.append({"text": pat["note"], "applied": True, "reason": "같은 구멍의 규칙 배열"})
         r = h0["d"] / 2
         for h in hs:
             # through: the material under the surface at the hole centre (a sloped top cuts a
@@ -1405,38 +1612,65 @@ def extract(path, name=None, tol=None):
                       % ("정면도" if axis == "Y" else "측면도", a, z))
                 continue
             # depth: hidden lines of the hole in the other views
-            span = None
-            if axis == "Y":
-                if top is not None:
-                    span = hidden_span(top, (a - r) / scale, (a + r) / scale, tol)
-                if span is None and side is not None:
-                    span = hidden_span_h(side, (z - r) / scale, (z + r) / scale, tol)
-            else:
-                if top is not None:
-                    span = hidden_span_h(top, (a - r) / scale, (a + r) / scale, tol)
-                if span is None and front is not None:
-                    span = hidden_span_h(front, (z - r) / scale, (z + r) / scale, tol)
+            def span_of(rad):
+                sp = None
+                if axis == "Y":
+                    if top is not None:
+                        sp = hidden_span(top, (a - rad) / scale, (a + rad) / scale, tol)
+                    if sp is None and side is not None:
+                        sp = hidden_span_h(side, (z - rad) / scale, (z + rad) / scale, tol)
+                else:
+                    if top is not None:
+                        sp = hidden_span_h(top, (a - rad) / scale, (a + rad) / scale, tol)
+                    if sp is None and front is not None:
+                        sp = hidden_span_h(front, (z - rad) / scale, (z + rad) / scale, tol)
+                return None if sp is None else (sp[0] * scale, sp[1] * scale)
+            span = span_of(r)
             plane = "XZ" if axis == "Y" else "YZ"
             far = "W" if axis == "Y" else "L"
             assumed = span is None
-            if span is None:
-                s0, s1 = 0.0, extent
-            else:
-                s0, s1 = span[0] * scale, span[1] * scale
+            s0, s1 = span if span is not None else (0.0, extent)
             eps = max(0.01, extent * 1e-4)
+            # counterbore: the bigger concentric circle, its depth from its own hidden lines
+            cb = cb_span = None
+            if len(radii) > 1:
+                cb = 2 * radii[-1] * scale
+                cb_span = span_of(radii[-1] * scale)
+            if cb_span is not None and span is not None:
+                # inside the counterbore the small hole has no wall, so its hidden lines stop at the
+                # counterbore floor: the hole really continues to the counterbore's face
+                if cb_span[0] <= eps and abs(cb_span[1] - s0) <= max(eps, 0.05):
+                    s0 = 0.0
+                if cb_span[1] >= extent - eps and abs(cb_span[0] - s1) <= max(eps, 0.05):
+                    s1 = extent
+            cb_at_far = cb_span is not None and cb_span[1] >= extent - eps and cb_span[0] > eps
             if s0 <= eps and s1 >= extent - eps:
-                face_off, direction, depth = 0, "positive", "through_all"
+                face_off, direction, depth = (far, "negative", "through_all") if cb_at_far else (0, "positive", "through_all")
             elif s0 <= eps:
                 face_off, direction, depth = 0, "positive", s1
             elif s1 >= extent - eps:
                 face_off, direction, depth = far, "negative", extent - s0
             else:
                 face_off, direction, depth, assumed = 0, "positive", "through_all", True
+            cb_depth = None
+            if cb is not None and cb_span is not None:
+                cb_depth = (extent - cb_span[0]) if direction == "negative" else cb_span[1]
+                if cb_depth <= eps or cb_depth >= extent - eps:
+                    cb_depth = None
             gi = n_groups = n_groups + 1
             d = 2 * r
             dn = add_param("d%d" % gi, d, ("front", "side", "top"), ("diameter", "linear"), "옆 구멍 지름")
+            def pos_param(pname, value, what):
+                # a hole position measured by a drawing dimension becomes a parameter, else a number
+                add_param(pname, value, ("front", "side", "top"), what=what)
+                if (params[pname].get("source") or {}).get("type") == "inferred":
+                    del params[pname]
+                    return _r(value)
+                return pname
+            pa = pos_param("h%d_%s" % (gi, "x" if axis == "Y" else "y"), a, "옆 구멍 위치")
+            pz = pos_param("h%d_z" % gi, z, "옆 구멍 높이")
             feat = {"id": "h%d" % gi, "type": "hole", "face": {"plane": plane, "offset": face_off},
-                    "direction": direction, "positions": [[_r(a), _r(z)]], "diameter": dn, "hole_type": "simple"}
+                    "direction": direction, "positions": [[pa, pz]], "diameter": dn, "hole_type": "simple"}
             if depth == "through_all":
                 feat["depth"] = "through_all"
                 depth_mm = extent
@@ -1449,16 +1683,33 @@ def extract(path, name=None, tol=None):
                                                                 "label": label, "confidence": 1.0}}
                 feat["depth"] = pk
                 depth_mm = depth
-            if len(radii) > 1:
-                issue("E207", "WARN", "옆 구멍 Ø%.3f의 동심원(카운터보어?)은 아직 모델링하지 않습니다" % d)
+            if cb is not None and cb_depth is not None:
+                feat["hole_type"] = "counterbore"
+                feat["cb_diameter"] = add_param("cb%d" % gi, cb, ("front", "side", "top"), ("diameter", "linear"),
+                                                "옆 구멍 카운터보어 지름")
+                ck = add_param("cbh%d" % gi, cb_depth, ("front", "top", "side"), ("linear", "aligned"), "옆 구멍 카운터보어 깊이")
+                cb_label = params[feat["cb_diameter"]]["source"].get("label", "")
+                m = re.search(r"(?:DP|DEEP|깊이|↧)\s*(\d+(?:\.\d+)?)", cb_label, re.I)
+                if m and params[ck]["source"]["type"] == "inferred" and abs(float(m.group(1)) - cb_depth) <= 0.01:
+                    params[ck] = {"value": _r(cb_depth), "source": {"type": "drawing", "view": params[feat["cb_diameter"]]["source"].get("view"),
+                                                                   "label": cb_label, "confidence": 1.0}}
+                feat["cb_depth"] = ck
+            elif cb is not None:
+                issue("E207", "WARN", "옆 구멍 Ø%.3f의 동심원 Ø%.3f: 깊이를 알려 주는 숨은선이 없어 카운터보어로 만들지 않았습니다"
+                      % (d, cb))
             if assumed:
                 issue("E207", "WARN", "옆 구멍 Ø%.3f (%s 방향): 숨은선을 찾지 못해 관통으로 가정했습니다" % (d, axis),
                       where={"feature": feat["id"]})
             features.append(feat)
             checks.append({"id": "c_%s_n" % feat["id"], "kind": "hole_count", "diameter": dn, "expected": 1})
             checks.append({"id": "c_%s_p" % feat["id"], "kind": "hole_positions", "axis": axis, "diameter": dn,
-                           "expected": feat["positions"]})
-            features_vol -= math.pi * r * r * depth_mm
+                           "expected": [[_r(a), _r(z)]]})
+            if feat["hole_type"] == "counterbore":
+                checks.append({"id": "c_%s_cb" % feat["id"], "kind": "hole_count", "diameter": feat["cb_diameter"],
+                               "expected": 1})
+                features_vol -= math.pi * (cb / 2) ** 2 * cb_depth + math.pi * r * r * max(depth_mm - cb_depth, 0)
+            else:
+                features_vol -= math.pi * r * r * depth_mm
 
     checks.insert(0, {"id": "c_bbox", "kind": "bbox", "expected": ["L", "W", "H"]})
     checks.append({"id": "c_vol", "kind": "volume", "expected": _r(features_vol, 3) if vol_ok else None,
@@ -1469,7 +1720,8 @@ def extract(path, name=None, tol=None):
         notes.append({"text": "미사용 치수 %s (%s)" % (_label(d["text"], d["measured"] * scale), d["view"]),
                       "applied": False, "reason": "자동 해석에서 사용하지 않은 치수 - 모델 검증 때 직접 확인"})
     for t in texts:
-        notes.append({"text": t["text"], "applied": False, "reason": "도면 주기"})
+        if t.get("kind") != "fcf":
+            notes.append({"text": t["text"], "applied": False, "reason": "도면 주기"})
 
     spec = {
         "schema_version": "0.1",
@@ -1485,4 +1737,5 @@ def extract(path, name=None, tol=None):
         spec["part"]["note"] = "원점 = 외곽 바운딩 박스 최소 모서리"
     report["summary"] = {"views": sorted(named), "bands": len(bands), "holes": len(hole_specs),
                          "dims_total": len(dims), "dims_used": len(used_dims), "conflicts": len(conflicts)}
+    _annotate(spec, texts + title_texts, report)
     return spec, report

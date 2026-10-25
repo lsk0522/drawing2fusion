@@ -1,0 +1,38 @@
+{
+  "bbox": [
+    76.2,
+    50.8,
+    12.7
+  ],
+  "holes": [
+    {
+      "axis": "Z",
+      "diameter": 5.1054,
+      "positions": [
+        [
+          12.7,
+          12.7
+        ],
+        [
+          12.7,
+          38.1
+        ],
+        [
+          63.5,
+          12.7
+        ],
+        [
+          63.5,
+          38.1
+        ]
+      ],
+      "thread": "1/4-20 UNC"
+    }
+  ],
+  "volume": 48121.240365758684,
+  "source_dxf": "plate_unc.dxf",
+  "pdf": {
+    "dash_style": "array",
+    "paper_scale": 1.0
+  }
+}

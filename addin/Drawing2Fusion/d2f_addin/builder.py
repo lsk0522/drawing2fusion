@@ -678,11 +678,28 @@ def _thread(ctx, f, cut):
     cls = th.get("class", "6H")
     ok_designation = False
     try:
-        size = ("%g" % float(th["size"])) if th.get("size") else None
         sizes = list(q.allSizes(ttype))
-        cand = [sz for sz in sizes if size is not None and abs(float(sz) - float(size)) < 1e-6] if size else []
+        if th.get("size_label") and not ttype.startswith("ISO"):
+            # inch threads: Fusion lists sizes as labels ("1/4", "#10", "1 1/8")
+            want = str(th["size_label"]).replace(" ", "")
+            cand = [sz for sz in sizes if str(sz).replace(" ", "") == want]
+        else:
+            size = ("%g" % float(th["size"])) if th.get("size") else None
+            cand = []
+            for sz in sizes:
+                try:
+                    if size is not None and abs(float(sz) - float(size)) < 1e-6:
+                        cand.append(sz)
+                except ValueError:
+                    continue
         if cand:
-            ok_designation = designation in list(q.allDesignations(ttype, cand[0]))
+            designations = list(q.allDesignations(ttype, cand[0]))
+            if designation not in designations:
+                # same thread written differently ("1/4-20UNC" / "1/4 - 20 UNC"): compare without spaces
+                same = [d for d in designations if d.replace(" ", "").upper() == str(designation).replace(" ", "").upper()]
+                if same:
+                    designation = same[0]
+            ok_designation = designation in designations
             if ok_designation:
                 classes = list(q.allClasses(True, ttype, designation))
                 if cls not in classes and classes:
@@ -814,10 +831,36 @@ def build_pattern_rect(ctx, f):
     return pat
 
 
+def _axis_through(ctx, f):
+    """Pattern axis parallel to X / Y / Z through f["center"] (the two other world coordinates).
+
+    A construction sketch line is used as the axis: it sits in a plane that contains the axis
+    direction (XZ offset in Y for a Z axis, XY offset in Z for X / Y axes)."""
+    name = str(f.get("axis", "Z")).upper()
+    center = f.get("center")
+    if not center or all(abs(ctx.num(c)) < 1e-9 for c in center):
+        return _axis(ctx, name)
+    a, b = ctx.num(center[0]), ctx.num(center[1])
+    if name == "Z":           # centre = (X, Y)
+        plane, off, p0, p1 = "XZ", center[1], (a, b, 0.0), (a, b, 10.0)
+    elif name == "Y":         # centre = (X, Z)
+        plane, off, p0, p1 = "XY", center[1], (a, 0.0, b), (a, 10.0, b)
+    else:                     # X axis, centre = (Y, Z)
+        plane, off, p0, p1 = "XY", center[1], (0.0, a, b), (10.0, a, b)
+    sk = ctx.root.sketches.add(resolve_plane(ctx, plane, off, f["id"] + "_axis"))
+    sk.name = f["id"] + "_axis"
+    pts = [sk.modelToSketchSpace(adsk.core.Point3D.create(*[expr.mm_to_cm(v) for v in p])) for p in (p0, p1)]
+    ln = sk.sketchCurves.sketchLines.addByTwoPoints(adsk.core.Point3D.create(pts[0].x, pts[0].y, 0),
+                                                    adsk.core.Point3D.create(pts[1].x, pts[1].y, 0))
+    ln.isConstruction = True
+    return ln
+
+
 def build_pattern_circ(ctx, f):
-    """{features: [ids], axis: "Z", count, angle: 360} - axis through the origin."""
+    """{features: [ids], axis: "Z", center: [u, v] (optional), count, angle: 360}.
+    Without center the axis runs through the origin."""
     pats = ctx.root.features.circularPatternFeatures
-    inp = pats.createInput(_pattern_inputs(ctx, f), _axis(ctx, f.get("axis", "Z")))
+    inp = pats.createInput(_pattern_inputs(ctx, f), _axis_through(ctx, f))
     inp.quantity = ctx.vi(f["count"], "")
     inp.totalAngle = ctx.vi(f.get("angle", 360), "deg")
     inp.isSymmetric = False

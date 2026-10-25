@@ -226,7 +226,8 @@ def _cmp_thread(check, measure, resolved, params_spec):
     """Number of hole faces carrying a thread of this designation (e.g. 4 x M6x1)."""
     want = str(check.get("designation", ""))
     expected = int(expr.evaluate(check["expected"], resolved))
-    found = sum(t.get("faces", 0) for t in measure.get("threads") or [] if t.get("designation") == want)
+    norm = lambda d: str(d or "").replace(" ", "").upper()      # noqa: E731  "1/4-20 UNC" == "1/4-20UNC"
+    found = sum(t.get("faces", 0) for t in measure.get("threads") or [] if norm(t.get("designation")) == norm(want))
     if found == expected:
         return [_row(check, None, None, "나사", "%s %d개 OK" % (want, found), label="나사 %s" % want,
                      expected=expected, actual=found)]

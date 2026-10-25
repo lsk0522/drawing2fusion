@@ -138,6 +138,20 @@ class ValidateTests(unittest.TestCase):
         undefined["segments"][0]["to"] = ["Q", 0]
         self.assertIn("E206", codes(validate.validate(spec_with(undefined)), "ERROR"))
 
+    def test_pattern_instances_inside(self):
+        base = [{"id": "s", "type": "sketch", "entities": [{"kind": "rect", "corner": [0, 0], "size": [100, 100]}]},
+                {"id": "e", "type": "extrude", "profile": "s", "distance": 10},
+                {"id": "h1", "type": "hole", "face": {"plane": "XY", "offset": 10}, "positions": [["50 + pcd/2", 50]],
+                 "diameter": 9, "depth": "through_all"},
+                {"id": "pc1", "type": "pattern_circ", "features": ["h1"], "axis": "Z", "center": [50, 50], "count": 6}]
+        spec = {"schema_version": "0.1", "part": {"name": "x"}, "parameters": {"pcd": {"value": 75}}, "features": base}
+        pts = validate.hole_instances(base, base[2], {"pcd": 75})
+        self.assertEqual(len(pts), 6)
+        self.assertAlmostEqual(pts[3][0], 12.5, places=6)
+        self.assertEqual(codes(validate.validate(spec), "ERROR"), set())
+        spec["parameters"]["pcd"]["value"] = 95          # the copies on the far side leave the plate
+        self.assertIn("E205", codes(validate.validate(spec), "ERROR"))
+
     def test_undefined_and_reserved(self):
         spec = {"schema_version": "0.1", "part": {"name": "x"},
                 "parameters": {"9x": {"value": 1}, "L": {"value": 10}},

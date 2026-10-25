@@ -1,0 +1,43 @@
+{
+  "bbox": [
+    80.0,
+    40.0,
+    30.0
+  ],
+  "holes": [
+    {
+      "axis": "Y",
+      "diameter": 6.6,
+      "positions": [
+        [
+          25.0,
+          15.0
+        ]
+      ],
+      "depth": "through",
+      "cb_diameter": 11.0,
+      "cb_depth": 6.5,
+      "face": 0
+    },
+    {
+      "axis": "X",
+      "diameter": 5.5,
+      "positions": [
+        [
+          28.0,
+          22.0
+        ]
+      ],
+      "depth": "through",
+      "cb_diameter": 9.5,
+      "cb_depth": 5.4,
+      "face": "L"
+    }
+  ],
+  "volume": 92081.05166020595,
+  "source_dxf": "block_side_cbore.dxf",
+  "pdf": {
+    "dash_style": "segments",
+    "paper_scale": 1.0
+  }
+}

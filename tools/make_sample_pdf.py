@@ -42,6 +42,8 @@ CASES = [  # (dxf name, output name, dash style, paper scale)
     ("bushing_section", "bushing_section", "array", 1.0),
     ("pulley_keyway_section", "pulley_keyway_section", "segments", 1.0),
     ("gear_blank_section", "gear_blank_section", "array", 1.0),
+    ("block_side_cbore", "block_side_cbore", "segments", 1.0),
+    ("plate_unc", "plate_unc", "array", 1.0),
     ("link_plate", "link_plate", "segments", 1.0),
     ("clevis_lug", "clevis_lug", "array", 1.0),
     ("slanted_block", "slanted_block", "segments", 1.0),

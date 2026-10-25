@@ -99,6 +99,17 @@ def print_summary(spec, report):
                "unresolved": "❓ 알 수 없음", "user": "사용자 입력"}.get(src.get("type"), src.get("type"))
         v = vals.get(k, p.get("value"))
         print("   %-9s %10s   %s" % (k, ("%g" % v) if isinstance(v, (int, float)) else v, tag))
+    pats = [f for f in spec.get("features") or [] if f.get("type") in ("pattern_rect", "pattern_circ")]
+    for f in pats:
+        n = f.get("count") if f["type"] == "pattern_circ" else \
+            (f.get("x") or {}).get("count", 1) * (f.get("y") or {}).get("count", 1)
+        print("   🔁 %s: %s %s개 (%s)" % (f["id"], "원형 배열" if f["type"] == "pattern_circ" else "직선 배열", n,
+                                       ", ".join(f.get("features") or [])))
+    ann = [n for n in spec.get("notes") or [] if n.get("annotation")]
+    if ann:
+        print("   📝 가공 요구 %d개 (모델에는 반영 안 됨, part-spec.json notes에 기록):" % len(ann))
+        for n in ann:
+            print("      · %s" % n["reason"].split(" — ")[0])
     for i in report["issues"]:
         print("   %s [%s] %s" % ({"BLOCK": "🟠", "ERROR": "🔴", "WARN": "🟡"}.get(i["severity"], "ℹ️"),
                                 i["code"], i["message"]))

@@ -399,6 +399,106 @@ def plate_tapped():
                "volume": vol}
 
 
+def block_side_cbore():
+    """Side holes with counterbores: Ø6.6 along Y with C'BORE Ø11 DP6.5 from the front face,
+    Ø5.5 along X with C'BORE Ø9.5 DP5.4 from the right face (far face -> negative direction)."""
+    L, W, H = 80.0, 40.0, 30.0
+    ax, az, ad, acb, acbh = 25.0, 15.0, 6.6, 11.0, 6.5           # hole A (along Y)
+    by, bz, bd, bcb, bcbh = 28.0, 22.0, 5.5, 9.5, 5.4             # hole B (along X)
+    s = Sheet("BLOCK_SIDE_CBORE")
+    ty, rx = H + GAP, L + GAP
+    # front view (x = X, y = Z): A as circles, B hidden
+    s.rect(0, 0, L, H)
+    s.circle((ax, az), ad / 2)
+    s.circle((ax, az), acb / 2)
+    s.center_mark((ax, az), acb / 2)
+    for dz in (-bd / 2, bd / 2):
+        s.hidden_h(bz + dz, 0, L - bcbh)
+    for dz in (-bcb / 2, bcb / 2):
+        s.hidden_h(bz + dz, L - bcbh, L)
+    s.hidden_v(L - bcbh, bz - bcb / 2, bz + bcb / 2)
+    # top view (x = X, y = Y)
+    s.rect(0, ty, L, W)
+    for dx in (-acb / 2, acb / 2):
+        s.hidden_v(ax + dx, ty, ty + acbh)
+    s.hidden_h(ty + acbh, ax - acb / 2, ax + acb / 2)
+    for dx in (-ad / 2, ad / 2):
+        s.hidden_v(ax + dx, ty + acbh, ty + W)
+    for dy in (-bd / 2, bd / 2):
+        s.hidden_h(ty + by + dy, 0, L - bcbh)
+    for dy in (-bcb / 2, bcb / 2):
+        s.hidden_h(ty + by + dy, L - bcbh, L)
+    s.hidden_v(L - bcbh, ty + by - bcb / 2, ty + by + bcb / 2)
+    # right view (x = Y, y = Z): B as circles, A hidden
+    s.rect(rx, 0, W, H)
+    s.circle((rx + by, bz), bd / 2)
+    s.circle((rx + by, bz), bcb / 2)
+    s.center_mark((rx + by, bz), bcb / 2)
+    for dz in (-acb / 2, acb / 2):
+        s.hidden_h(az + dz, rx, rx + acbh)
+    s.hidden_v(rx + acbh, az - acb / 2, az + acb / 2)
+    for dz in (-ad / 2, ad / 2):
+        s.hidden_h(az + dz, rx + acbh, rx + W)
+    # dimensions
+    s.hdim((0, 0), (L, 0), -12)
+    s.vdim((L, 0), (L, H), L + 12)
+    s.vdim((0, ty), (0, ty + W), -12)
+    s.hdim((0, H), (ax, az), H + 8)
+    s.vdim((0, 0), (ax, az), -24)
+    s.ddim((ax, az), ad / 2, angle=225, text="%%c<>")
+    s.ddim((ax, az), acb / 2, angle=70, text="C'BORE %%c<> DP6.5")
+    s.hdim((rx, H), (rx + by, bz), H + 8)
+    s.vdim((rx + W, 0), (rx + by, bz), rx + W + 12)
+    s.ddim((rx + by, bz), bd / 2, angle=225, text="%%c<>")
+    s.ddim((rx + by, bz), bcb / 2, angle=70, text="C'BORE %%c<> DP5.4")
+    # manufacturing notes: GD&T frame (DXF TOLERANCE), roughness, general tolerance, hardness
+    s.msp.new_entity("TOLERANCE", dxfattribs={"layer": "TEXT", "insert": (0, -40), "dimstyle": "Standard",
+                                              "content": "{\\Fgdt;b}%%v0.02%%vA"})
+    s.note((0, -50), "Ra 1.6")
+    s.note((0, -58), "ISO 2768-m   HRC 40~45")
+    vol = L * W * H - (math.pi * (acb / 2) ** 2 * acbh + math.pi * (ad / 2) ** 2 * (W - acbh)) \
+        - (math.pi * (bcb / 2) ** 2 * bcbh + math.pi * (bd / 2) ** 2 * (L - bcbh))
+    return s, {"bbox": [L, W, H],
+               "holes": [{"axis": "Y", "diameter": ad, "positions": [[ax, az]], "depth": "through",
+                          "cb_diameter": acb, "cb_depth": acbh, "face": 0},
+                         {"axis": "X", "diameter": bd, "positions": [[by, bz]], "depth": "through",
+                          "cb_diameter": bcb, "cb_depth": bcbh, "face": "L"}],
+               "volume": vol}
+
+
+def plate_unc():
+    """Inch tapped plate: 4X 1/4-20 UNC through (tap drill #7 = Ø5.105 + thin 3/4 arc Ø6.35)."""
+    L, W, T = 76.2, 50.8, 12.7
+    dr, maj = 0.201 * 25.4, 6.35
+    s = Sheet("PLATE_UNC")
+    if "THIN" not in s.doc.layers:
+        s.doc.layers.add("THIN", color=3, linetype="CONTINUOUS")
+    ty, rx = T + GAP, L + GAP
+    pos = [[12.7, 12.7], [12.7, 38.1], [63.5, 12.7], [63.5, 38.1]]
+    s.rect(0, 0, L, T)
+    for x in (12.7, 63.5):
+        for dx in (-dr / 2, dr / 2):
+            s.hidden_v(x + dx, 0, T)
+        s.line((x, -3), (x, T + 3), "CENTER")
+    s.rect(0, ty, L, W)
+    for x, y in pos:
+        s.circle((x, ty + y), dr / 2)
+        s.arc((x, ty + y), maj / 2, 0, 270, "THIN")
+        s.center_mark((x, ty + y), maj / 2)
+    s.rect(rx, 0, W, T)
+    s.hdim((0, 0), (L, 0), -12)
+    s.vdim((L, 0), (L, T), L + 12)
+    s.vdim((0, ty), (0, ty + W), -14)
+    s.hdim((0, ty + W), (12.7, ty + 38.1), ty + W + 10)
+    s.hdim((12.7, ty + 38.1), (63.5, ty + 38.1), ty + W + 10)
+    s.vdim((L, ty), (63.5, ty + 12.7), L + 12)
+    s.vdim((63.5, ty + 12.7), (63.5, ty + 38.1), L + 12)
+    s.ddim((63.5, ty + 38.1), maj / 2, angle=45, text="4X 1/4-20 UNC")
+    vol = L * W * T - 4 * math.pi * (dr / 2) ** 2 * T
+    return s, {"bbox": [L, W, T], "holes": [{"axis": "Z", "diameter": round(dr, 4), "positions": pos,
+                                             "thread": "1/4-20 UNC"}], "volume": vol}
+
+
 # ---------------------------------------------------------------------------- curved / slanted outlines
 def link_plate():
     """Obround link: two R15 ends 60 apart, t=10, Ø12 holes at the arc centres (plan view curved)."""
@@ -671,6 +771,8 @@ PARTS = {
     "gear_blank_section": gear_blank_section,
     "broken_section_dim": broken_section_dim,
     "broken_keyway_noview": broken_keyway_noview,
+    "block_side_cbore": block_side_cbore,
+    "plate_unc": plate_unc,
     "link_plate": link_plate,
     "clevis_lug": clevis_lug,
     "slanted_block": slanted_block,

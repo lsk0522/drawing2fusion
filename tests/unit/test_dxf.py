@@ -76,6 +76,11 @@ class DxfReaderTests(unittest.TestCase):
                             self.assertAlmostEqual(expr.evaluate(side[0]["depth"], p), eh["depth"], places=3)
                         elif eh.get("depth") == "through":
                             self.assertEqual(side[0]["depth"], "through_all")
+                        if eh.get("cb_diameter"):
+                            self.assertEqual(side[0]["hole_type"], "counterbore")
+                            self.assertAlmostEqual(expr.evaluate(side[0]["cb_diameter"], p), eh["cb_diameter"], places=3)
+                            self.assertAlmostEqual(expr.evaluate(side[0]["cb_depth"], p), eh["cb_depth"], places=3)
+                            self.assertEqual(side[0]["face"]["offset"], eh["face"])
                         continue
                     want = sorted((round(x - off[0], 3), round(y - off[1], 3)) for x, y in eh["positions"])
                     match = []
@@ -83,8 +88,10 @@ class DxfReaderTests(unittest.TestCase):
                         d = expr.evaluate(h["diameter"], p)
                         cb = expr.evaluate(h["cb_diameter"], p) if h.get("cb_diameter") else None
                         if abs(d - eh["diameter"]) < 1e-3 or (cb and abs(cb - eh["diameter"]) < 1e-3):
-                            match += [(round(expr.evaluate(x, p), 3), round(expr.evaluate(y, p), 3))
-                                      for x, y in h["positions"]]
+                            match += [(round(x, 3) + 0.0, round(y, 3) + 0.0)
+                                      for x, y in validate.hole_instances(spec["features"], h, p)]
+                            if eh.get("thread") and abs(d - eh["diameter"]) < 1e-3:
+                                self.assertEqual(h["thread"]["designation"], eh["thread"])
                     self.assertEqual(sorted(match), want, "holes Ø%s" % eh["diameter"])
                 if exp.get("volume") is not None:
                     vol = [c for c in spec["checks"] if c["kind"] == "volume"][0]["expected"]
@@ -143,6 +150,10 @@ class DxfReaderTests(unittest.TestCase):
         self.assertEqual(report["projection"], "third")
         self.assertEqual(set(report["views"]), {"front", "top", "side"})
         self.assertEqual(spec["parameters"]["d1"]["source"]["type"], "drawing")
+        # every dimension of the plate lands on a parameter (hole grid: first hole + pitches)
+        self.assertFalse(any("미사용 치수" in n["text"] for n in spec["notes"]))
+        self.assertEqual({spec["parameters"][k]["source"]["type"] for k in ("px1", "py1", "hx1", "hy1")}, {"drawing"})
+        spec, report = extract(os.path.join(DXF_DIR, "bracket_l.dxf"))
         self.assertTrue(any("미사용 치수" in n["text"] for n in spec["notes"]))
 
     def test_first_angle_layout(self):
@@ -196,6 +207,43 @@ class DxfReaderTests(unittest.TestCase):
         self.assertEqual(spec["parameters"]["f_r1"]["source"]["type"], "drawing")
         arc = [s_ for s_ in spec["features"][0]["entities"][0]["segments"] if s_["type"] == "arc"][0]
         self.assertEqual(arc["radius_param"], "f_r1")
+
+    def test_hole_patterns_and_threads(self):
+        from d2f.extract.dxf_reader import extract, parse_thread
+        spec, rep = extract(os.path.join(DXF_DIR, "flange.dxf"))
+        pc = [f for f in spec["features"] if f["type"] == "pattern_circ"][0]
+        self.assertEqual((pc["count"], pc["center"]), (6, ["L/2", "W/2"]))
+        self.assertEqual(spec["parameters"]["pcd1"]["source"]["label"], "P.C.D 75")
+        h1 = [f for f in spec["features"] if f["id"] == pc["features"][0]][0]
+        self.assertEqual(h1["positions"], [["L/2 + pcd1/2", "W/2"]])
+        # tapped holes are not patterned (the thread would stay on the first hole only)
+        spec, rep = extract(os.path.join(DXF_DIR, "plate_tapped.dxf"))
+        self.assertFalse(any(f["type"].startswith("pattern") for f in spec["features"]))
+        self.assertEqual(parse_thread("4X #10-32 UNF-2B")["designation"], "#10-32 UNF")
+        self.assertEqual(parse_thread("1 1/8-7 UNC")["size_label"], "1 1/8")
+        self.assertAlmostEqual(parse_thread("1/4-20 UNC")["drill"], 5.1054, places=4)
+        self.assertEqual(parse_thread("4-M6")["designation"], "M6x1")
+        self.assertIsNone(parse_thread("MATERIAL: AL5052"))
+        spec, rep = extract(os.path.join(DXF_DIR, "plate_unc.dxf"))
+        th = [f for f in spec["features"] if f.get("thread")][0]["thread"]
+        self.assertEqual((th["type"], th["size_label"]), ("ANSI Unified Screw Threads", "1/4"))
+
+    def test_annotations(self):
+        from d2f.extract import annotations as A
+        from d2f.extract.dxf_reader import extract
+        self.assertEqual(A.parse_text("⌖ Ø0.1 Ⓜ A B C")[0]["datums"], ["A", "B", "C"])
+        self.assertEqual(A.parse_text("// 0.01 A-B")[0]["characteristic"], "parallelism")
+        self.assertEqual(A.parse_text("일반공차 KS B 0412 보통급")[0]["class"], "m")
+        self.assertEqual(A.parse_text("PLATE_HOLES"), [])                  # title words are not finishes
+        fr = A.parse_fcf(r"{\Fgdt;j}%%v{\Fgdt;n}0.1{\Fgdt;m}%%vA%%vB^J{\Fgdt;c}%%v0.01")
+        self.assertEqual([(f["characteristic"], f["value"], f.get("modifier"), f["datums"]) for f in fr],
+                         [("position", 0.1, "MMC", ["A", "B"]), ("flatness", 0.01, None, [])])
+        self.assertEqual((A.iso2768("m", 80), A.iso2768("f", 5), A.iso2768("v", 1)), (0.3, 0.05, None))
+        spec, rep = extract(os.path.join(DXF_DIR, "block_side_cbore.dxf"))
+        kinds = sorted(a["kind"] for a in rep["annotations"])
+        self.assertEqual(kinds, ["gdt", "general_tolerance", "hardness", "roughness"])
+        self.assertEqual(spec["parameters"]["L"]["general_tolerance"]["plusminus"], 0.3)
+        self.assertTrue(all(n["applied"] is False for n in spec["notes"] if "annotation" in n))
 
     def test_intersect_helpers(self):
         from d2f.extract import intersect as I
