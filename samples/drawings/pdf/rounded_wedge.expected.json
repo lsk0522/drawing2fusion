@@ -11,6 +11,7 @@
   "source_dxf": "rounded_wedge.dxf",
   "pdf": {
     "dash_style": "array",
-    "paper_scale": 1.0
+    "paper_scale": 1.0,
+    "terminator": "arrow"
   }
 }

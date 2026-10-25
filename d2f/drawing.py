@@ -44,7 +44,7 @@ def ensure_ezdxf(auto_install=True):
     return None
 
 
-def extract_to(path, out_root):
+def extract_to(path, out_root, page=None):
     ext = os.path.splitext(path)[1].lower()
     if ext in PLANNED:
         raise SystemExit("🔴 [E101] %s 이미지 도면은 자동으로 읽지 못합니다. Claude 채팅에 사진을 올려 판독하세요 "
@@ -61,7 +61,7 @@ def extract_to(path, out_root):
         raise SystemExit("🔴 [E101] ezdxf 설치에 실패했습니다. 명령창에서 'py -m pip install ezdxf' 를 실행해 주세요.")
     from .extract.dxf_reader import ExtractError, extract
     try:
-        spec, report = extract(path)
+        spec, report = extract(path, page=page)
     except ExtractError as e:
         raise SystemExit("🔴 [%s] %s" % (e.code, e))
     name = spec["part"]["name"]

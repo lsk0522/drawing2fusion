@@ -33,6 +33,7 @@
   "source_dxf": "plate_holes.dxf",
   "pdf": {
     "dash_style": "array",
-    "paper_scale": 1.0
+    "paper_scale": 1.0,
+    "terminator": "arrow"
   }
 }

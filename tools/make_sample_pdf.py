@@ -48,6 +48,11 @@ CASES = [  # (dxf name, output name, dash style, paper scale)
     ("clevis_lug", "clevis_lug", "array", 1.0),
     ("slanted_block", "slanted_block", "segments", 1.0),
     ("rounded_wedge", "rounded_wedge", "array", 1.0),
+    # dimension terminators other than arrowheads (architectural ticks, dots) on linear dimensions
+    ("stepped_block", "stepped_block_ticks", "array", 1.0, "tick"),
+    ("plate_holes", "plate_holes_dots", "segments", 1.0, "dot"),
+    ("stepped_block_detail", "stepped_block_detail", "array", 1.0),
+    ("block_pocket_section", "block_pocket_section", "segments", 1.0),
 ]
 
 
@@ -60,8 +65,8 @@ def _dim_text(dim):
 
 
 class Pdf:
-    def __init__(self, ext, scale, style):
-        self.scale, self.style = scale, style
+    def __init__(self, ext, scale, style, term="arrow"):
+        self.scale, self.style, self.term = scale, style, term
         self.k = PT * scale
         self.x0, self.y0 = ext[0], ext[1]
         self.m = 15 * PT
@@ -130,7 +135,27 @@ class Pdf:
         sh.finish(color=(0, 0, 0), width=w * PT, dashes=self._dashes(pat) if pat else None, closePath=False)
         sh.commit()
 
-    def arrow(self, tip, ang):
+    def tick(self, tip, ang):
+        """Architectural tick: 2.5 mm oblique stroke at 45 deg through the dimension line end."""
+        h = 1.25 / self.scale
+        a = math.radians(ang + 45)
+        sh = self.page.new_shape()
+        sh.draw_line(self.p(tip[0] - h * math.cos(a), tip[1] - h * math.sin(a)),
+                     self.p(tip[0] + h * math.cos(a), tip[1] + h * math.sin(a)))
+        sh.finish(color=(0, 0, 0), width=0.35 * PT, closePath=False)
+        sh.commit()
+
+    def dot(self, tip):
+        sh = self.page.new_shape()
+        sh.draw_circle(self.p(*tip), 0.5 * PT)
+        sh.finish(color=(0, 0, 0), fill=(0, 0, 0), width=0.1)
+        sh.commit()
+
+    def arrow(self, tip, ang, linear=False):
+        if linear and self.term == "tick":
+            return self.tick(tip, ang)
+        if linear and self.term == "dot":
+            return self.dot(tip)
         L, W = ARROW_L / self.scale, ARROW_W / self.scale     # paper size, not model size
         dx, dy = math.cos(math.radians(ang)), math.sin(math.radians(ang))
         bx, by = tip[0] - dx * L, tip[1] - dy * L
@@ -161,7 +186,7 @@ class Pdf:
         self.page.insert_text(pt, text, fontsize=fs, fontname="helv", rotate=rot)
 
 
-def render(name, out_name, style, scale):
+def render(name, out_name, style, scale, term="arrow"):
     doc = ezdxf.readfile(os.path.join(SRC, name + ".dxf"))
     msp = doc.modelspace()
     xs, ys = [], []
@@ -179,7 +204,7 @@ def render(name, out_name, style, scale):
                     ys.append(v.dxf.insert.y)
         except Exception:
             pass
-    pdf = Pdf((min(xs), min(ys), max(xs), max(ys)), scale, style)
+    pdf = Pdf((min(xs), min(ys), max(xs), max(ys)), scale, style, term)
     for e in msp:
         t, layer = e.dxftype(), e.dxf.layer
         if t == "LINE":
@@ -207,7 +232,7 @@ def render(name, out_name, style, scale):
                     # tick blocks carry one rotation for both ends; arrows point away from the middle
                     ang = math.degrees(math.atan2(tip[1] - mid[1], tip[0] - mid[0])) if len(ins) == 2 \
                         and math.dist(tip, mid) > 1e-9 else v.dxf.rotation
-                    pdf.arrow(tip, ang)
+                    pdf.arrow(tip, ang, linear=(e.dimtype & 0x0F) in (0, 1))
                 elif vt == "MTEXT":
                     rot = v.dxf.get("rotation", 0) or 0
                     pos = tuple(v.dxf.insert)[:2]
@@ -222,17 +247,31 @@ def render(name, out_name, style, scale):
     if os.path.exists(exp):
         data = json.load(open(exp, encoding="utf-8"))
         data["source_dxf"] = name + ".dxf"
-        data["pdf"] = {"dash_style": style, "paper_scale": scale}
+        data["pdf"] = {"dash_style": style, "paper_scale": scale, "terminator": term}
         with open(os.path.join(OUT, out_name + ".expected.json"), "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
     return path
 
 
+def multipage_set():
+    """A drawing set: text-only cover sheet + plate_holes + stepped_block (page choice test)."""
+    out = pymupdf.open()
+    out.new_page().insert_text((72, 72), "COVER SHEET - DRAWING SET", fontsize=14)
+    for n in ("plate_holes", "stepped_block"):
+        out.insert_pdf(pymupdf.open(os.path.join(OUT, n + ".pdf")))
+    path = os.path.join(OUT, "multipage_set.pdf")
+    out.save(path)
+    return path
+
+
 def main(argv):
-    for name, out_name, style, scale in CASES:
+    for case in CASES:
+        name, out_name, style, scale = case[:4]
         if argv and out_name not in argv:
             continue
-        print("wrote", os.path.relpath(render(name, out_name, style, scale), ROOT))
+        print("wrote", os.path.relpath(render(name, out_name, style, scale, *case[4:]), ROOT))
+    if not argv or "multipage_set" in argv:
+        print("wrote", os.path.relpath(multipage_set(), ROOT))
 
 
 if __name__ == "__main__":

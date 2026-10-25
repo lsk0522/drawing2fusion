@@ -40,6 +40,7 @@
   "source_dxf": "bushing_section.dxf",
   "pdf": {
     "dash_style": "array",
-    "paper_scale": 1.0
+    "paper_scale": 1.0,
+    "terminator": "arrow"
   }
 }

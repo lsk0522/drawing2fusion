@@ -47,6 +47,7 @@
   "source_dxf": "pulley_keyway_section.dxf",
   "pdf": {
     "dash_style": "segments",
-    "paper_scale": 1.0
+    "paper_scale": 1.0,
+    "terminator": "arrow"
   }
 }

@@ -1,0 +1,36 @@
+{
+  "bbox": [
+    80.0,
+    40.0,
+    30.0
+  ],
+  "holes": [
+    {
+      "axis": "Z",
+      "diameter": 10.0,
+      "positions": [
+        [
+          20.0,
+          20
+        ]
+      ]
+    },
+    {
+      "axis": "Z",
+      "diameter": 16.0,
+      "positions": [
+        [
+          55.0,
+          20
+        ]
+      ]
+    }
+  ],
+  "volume": 91231.06235185069,
+  "source_dxf": "block_pocket_section.dxf",
+  "pdf": {
+    "dash_style": "segments",
+    "paper_scale": 1.0,
+    "terminator": "arrow"
+  }
+}

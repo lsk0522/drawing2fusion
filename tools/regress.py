@@ -94,6 +94,7 @@ MUTATIONS = [
     ("block_side_holes", "옆 구멍(Y 방향) 높이 Z 15→18", _feature("h2", lambda f: f["positions"].__setitem__(0, [20, 18])), "E404"),
     ("slanted_block", "경사 시작 높이 f_v1 20→25 (경사면이 다른 자리)", _set_param("f_v1", 25), "E406"),
     ("flange", "볼트 원 P.C.D 75→80 (원형 배열 반지름 오독)", _set_param("pcd1", 80), "E404"),
+    ("block_pocket_section", "포켓 깊이 hd2 12→4 (단면도 경계 오독)", _set_param("hd2", 4), "E410"),
     ("plate_unc", "인치 나사 1/4-20 UNC를 M6로 오독",
      _feature("h1", lambda f: f.__setitem__("thread", {"designation": "M6x1", "size": 6, "pitch": 1, "class": "6H",
                                                        "modeled": False})), "E409"),

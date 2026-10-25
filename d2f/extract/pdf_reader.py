@@ -231,8 +231,9 @@ def _merge_dashes(lines, tol):
 
 
 # ----------------------------------------------------------------------------- page reading
-def read_page(page, tol_pt=0.6):
-    """PDF page -> strokes (y up, pt), arrows, texts."""
+def read_page(page, tol_pt=0.6, dots=None):
+    """PDF page -> strokes (y up, pt), arrows, texts. Small filled circles (dimension dots) are
+    appended to `dots` as (centre, radius) when a list is given."""
     H = page.rect.height
 
     def P(q):
@@ -245,13 +246,20 @@ def read_page(page, tol_pt=0.6):
         dash = _dash_kind(d.get("dashes") or "")
         if "f" in typ and "s" not in typ or (typ == "fs" and width < 0.3):
             # filled shapes: small triangles are arrowheads; page background etc. are ignored
-            pts = []
+            pts, curve_pts = [], []
             for it in items:
                 if it[0] == "l":
                     pts += [P(it[1]), P(it[2])]
                 elif it[0] == "re":
                     r = it[1]
                     pts += [P(r.tl), P(r.tr), P(r.br), P(r.bl)]
+                elif it[0] == "c":
+                    curve_pts += [_bezier(P(it[1]), P(it[2]), P(it[3]), P(it[4]), k / 4) for k in range(5)]
+            if curve_pts and not pts and dots is not None:
+                fit = _fit_circle(curve_pts)
+                if fit and fit[2] < 4.0 and max(abs(math.dist(q, fit[:2]) - fit[2]) for q in curve_pts) < 0.1 * fit[2] + 0.05:
+                    dots.append(((fit[0], fit[1]), fit[2]))     # a dot terminator
+                    continue
             uniq = []
             for p in pts:
                 if not any(math.dist(p, q) < 1e-3 for q in uniq):
@@ -513,6 +521,68 @@ def find_dimensions(arrows, texts, curves, tol):
     return dims, used_t, used_a
 
 
+def _terminator_arrows(strokes, dots, arrows, tol):
+    """Dimension lines ended by oblique ticks (architectural) or dots instead of arrowheads.
+
+    A thin line carrying exactly two terminators (a short stroke crossing it at 30-60 deg through
+    its midpoint, or a small filled dot on it) becomes a pair of synthetic arrows pointing outward
+    at those points, so the normal arrow-pair code reads it. Returns (arrows, ids of tick strokes).
+    """
+    solid = [s for s in strokes if s.kind == "line" and s.dash is None]
+    if not solid:
+        return [], set()
+    wmax = max(s.width for s in solid)
+    split = min(s.width for s in solid) < 0.75 * wmax
+    thin = [s for s in solid if not split or s.width < 0.85 * wmax]
+    ticks = []
+    for s in thin:
+        L = math.dist(s.a, s.b)
+        if 1.5 <= L <= 8.0:
+            ticks.append((s, ((s.a[0] + s.b[0]) / 2, (s.a[1] + s.b[1]) / 2),
+                          math.degrees(math.atan2(s.b[1] - s.a[1], s.b[0] - s.a[0])), L))
+    if not ticks and not dots:
+        return [], set()
+    tips = [a["tip"] for a in arrows]
+    out, used = [], set()
+    for D in thin:
+        LD = math.dist(D.a, D.b)
+        if LD <= 8.0 or any(math.dist(D.a, t) < tol * 3 or math.dist(D.b, t) < tol * 3 for t in tips):
+            continue
+        u = ((D.b[0] - D.a[0]) / LD, (D.b[1] - D.a[1]) / LD)
+        ang_d = math.degrees(math.atan2(u[1], u[0]))
+        on = []
+
+        def place(p):
+            d = (p[0] - D.a[0], p[1] - D.a[1])
+            along = d[0] * u[0] + d[1] * u[1]
+            perp = abs(d[0] * u[1] - d[1] * u[0])
+            return along if perp < tol and -tol <= along <= LD + tol else None
+        for s, m, ang, L in ticks:
+            if s is D or L * 2 > LD:
+                continue
+            rel = (ang - ang_d) % 180
+            if not (30 <= rel <= 60 or 120 <= rel <= 150):
+                continue
+            al = place(m)
+            if al is not None:
+                on.append((al, m, s))
+        for c, r in dots:
+            al = place(c)
+            if al is not None:
+                on.append((al, c, None))
+        uniq = []
+        for al, p, s in sorted(on, key=lambda x: x[0]):
+            if not uniq or al - uniq[-1][0] > 2 * tol:
+                uniq.append((al, p, s))
+        if len(uniq) != 2:
+            continue
+        (a0, p0, s0), (a1, p1, s1) = uniq
+        out.append({"tip": p0, "dir": (-u[0], -u[1]), "len": 3.0, "terminator": "tick" if s0 is not None else "dot"})
+        out.append({"tip": p1, "dir": u, "len": 3.0, "terminator": "tick" if s1 is not None else "dot"})
+        used |= {id(s) for s in (s0, s1) if s is not None}
+    return out, used
+
+
 # ----------------------------------------------------------------------------- hatching
 def find_hatch_lines(lines, tol, tips=()):
     """Indices of thin lines forming section hatching: >= 6 parallel slanted lines at a regular
@@ -557,8 +627,22 @@ def hatch_regions(outline_lines, hatch_lines, tol):
 
 
 # ----------------------------------------------------------------------------- entry
-def load(path, page_no=0):
-    """Returns dict(segs, texts, dims, hatch_polys, issues, scale_mm_per_pt) in mm."""
+def pick_page(doc):
+    """Page with the most drawing paths (cover sheets, parts lists and notes pages have few)."""
+    best = (-1, 0)
+    for i in range(doc.page_count):
+        try:
+            n = len(doc[i].get_drawings())
+        except Exception:
+            n = 0
+        if n > best[0]:
+            best = (n, i)
+    return best[1]
+
+
+def load(path, page_no=None):
+    """Returns dict(segs, texts, dims, hatch_polys, issues, scale_mm_per_pt) in mm.
+    page_no: 0-based page; None = the page with the most drawing paths."""
     pymupdf = ensure_pymupdf()
     if pymupdf is None:
         raise R.ExtractError("E101", "PDF를 읽으려면 PyMuPDF가 필요합니다 (pip install pymupdf)")
@@ -569,16 +653,40 @@ def load(path, page_no=0):
     if doc.page_count == 0:
         raise R.ExtractError("E101", "PDF에 페이지가 없습니다")
     issues = []
-    if doc.page_count > 1:
-        issues.append(("E207", "INFO", "PDF %d쪽 중 첫 쪽만 읽었습니다" % doc.page_count))
+    if page_no is None:
+        page_no = pick_page(doc) if doc.page_count > 1 else 0
+        if doc.page_count > 1:
+            issues.append(("E207", "INFO", "PDF %d쪽 중 선이 가장 많은 %d쪽을 읽었습니다 (다른 쪽: --page 번호)"
+                           % (doc.page_count, page_no + 1)))
+    elif not 0 <= page_no < doc.page_count:
+        raise R.ExtractError("E101", "PDF에 %d쪽이 없습니다 (전체 %d쪽)" % (page_no + 1, doc.page_count))
+    elif doc.page_count > 1:
+        issues.append(("E207", "INFO", "PDF %d쪽 중 %d쪽을 읽었습니다" % (doc.page_count, page_no + 1)))
     page = doc[page_no]
-    strokes, arrows, texts = read_page(page)
+    dots = []
+    strokes, arrows, texts = read_page(page, dots=dots)
     if not strokes and texts:
         raise R.ExtractError("E103", "PDF에 선이 없습니다 — 스캔한 이미지 PDF 같습니다. 채팅 판독(docs/image-reading.md)을 쓰세요")
     if not strokes:
         raise R.ExtractError("E102", "PDF에서 도형을 찾지 못했습니다")
     tol = 0.3
     strokes = _dedupe(strokes, 0.05)
+    term, tick_ids = _terminator_arrows(strokes, dots, arrows, tol)
+    if term:
+        arrows = arrows + term
+        strokes = [s for s in strokes if id(s) not in tick_ids]
+        kinds = sorted({a["terminator"] for a in term})
+        issues.append(("E207", "INFO", "화살표 대신 %s 끝 표시 치수 %d개를 읽었습니다"
+                       % ("·".join({"tick": "사선(틱)", "dot": "점"}[k] for k in kinds), len(term) // 2)))
+
+    # ---- a short centre line drawn as pieces may have only one long dash + one dot, which looks
+    # "uniform" on its own: compare with the drawing's typical hidden-line dash
+    core = sorted(st.lengths[0] for st in strokes if st.dash == "hidden" and st.lengths and len(st.lengths) >= 2)
+    if core:
+        hid_dash = core[len(core) // 4]          # lower quartile: misread centre lines are the minority
+        for st in strokes:
+            if st.dash == "hidden" and st.lengths and max(st.lengths) > 1.6 * hid_dash:
+                st.dash = "center"
 
     # ---- a dashed line shorter than one dash is a single solid piece: recognise it by the pen
     # width the drawing uses for its hidden / centre lines

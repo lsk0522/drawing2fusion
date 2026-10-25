@@ -67,7 +67,7 @@ def t_status(_):
 
 def t_extract(a):
     path = _path(a["drawing"])
-    (res, text) = _quiet(drawing.extract_to, path, OUT)
+    (res, text) = _quiet(drawing.extract_to, path, OUT, a.get("page"))
     if not isinstance(res, tuple):
         return {"ok": False, "error": text.strip() or str(res)}
     spec_path, spec, report = res
@@ -170,7 +170,8 @@ def t_compare_image(a):
 TOOLS = {
     "d2f_status": (t_status, "Fusion 브리지 연결과 애드인 버전 확인", {}),
     "d2f_extract": (t_extract, "도면(.dxf / 벡터 .pdf)을 읽어 out/<이름>/part-spec.json을 만들고 파라미터·이슈·질문을 돌려줍니다",
-                    {"drawing": {"type": "string", "description": "도면 경로 (프로젝트 기준 상대 경로 가능)"}}),
+                    {"drawing": {"type": "string", "description": "도면 경로 (프로젝트 기준 상대 경로 가능)"},
+                     "page": {"type": "integer", "description": "PDF 쪽 번호(1부터). 없으면 선이 가장 많은 쪽"}}),
     "d2f_questions": (t_questions, "스펙의 BLOCK 질문 목록",
                       {"spec": {"type": "string"}}),
     "d2f_answer": (t_answer, "질문에 답을 써 넣습니다. answers: [{id, answer: '1'|'2'|숫자, value?}]",

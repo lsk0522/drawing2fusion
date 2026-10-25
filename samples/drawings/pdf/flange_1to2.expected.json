@@ -55,6 +55,7 @@
   "source_dxf": "flange.dxf",
   "pdf": {
     "dash_style": "array",
-    "paper_scale": 0.5
+    "paper_scale": 0.5,
+    "terminator": "arrow"
   }
 }

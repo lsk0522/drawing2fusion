@@ -461,8 +461,13 @@ def assign_dims(dims, views, tol):
 def drawing_scale(dims, units):
     """mm per drawing unit, from $INSUNITS and dims whose text differs from the measurement."""
     base = INSUNITS_TO_MM.get(units, 1.0)
+    kinds = ("linear", "aligned", "diameter", "radius")
     ratios = [d["shown"] / (d["measured"] * base) for d in dims
-              if d["shown"] and d["measured"] > 1e-9 and d["type"] in ("linear", "aligned", "diameter", "radius")]
+              if d["shown"] and d["measured"] > 1e-9 and d["type"] in kinds]
+    # "<>" texts display the measurement itself: each is a vote for 1:1 (so a detail view's
+    # few overridden texts cannot rescale the whole sheet)
+    ratios += [1.0 for d in dims if d["shown"] is None and (d.get("text") or "<>").strip() in ("", "<>")
+               and d["type"] in kinds and d["measured"] > 1e-9]
     if not ratios:
         return base, []
     ratios.sort()
@@ -771,6 +776,105 @@ def _hole_pattern(points, k, L, W, add_param, params, eps=0.01):
     return None
 
 
+def _cutting_plane(top, vname, tol):
+    """Where a front (side) section cuts: a centre/chain line crossing the whole plan view
+    horizontally (vertically). Returns the view-local coordinate in drawing units, or None."""
+    if top is None:
+        return None
+    best = None
+    for sg in top.segs:
+        if sg.kind != "line" or not sg.center:
+            continue
+        (u0, v0), (u1, v1) = top.local(sg.a), top.local(sg.b)
+        if vname == "front" and abs(v0 - v1) < tol and abs(u1 - u0) >= 0.9 * top.w:
+            best = v0
+        elif vname == "side" and abs(u0 - u1) < tol and abs(v1 - v0) >= 0.9 * top.h:
+            best = u0
+    return best
+
+
+def _symmetric_section(view, polys, tol):
+    """Hatch regions mirrored about a centre line that runs the whole length of the view."""
+    eps = max(tol * 50, 0.05 * min(view.w, view.h))
+    for sg in view.segs:
+        if sg.kind != "line" or not sg.center:
+            continue
+        horiz = abs(sg.a[1] - sg.b[1]) < tol
+        vert = abs(sg.a[0] - sg.b[0]) < tol
+        if horiz and abs(sg.b[0] - sg.a[0]) >= 0.9 * view.w:
+            ax, k = sg.a[1], 1
+        elif vert and abs(sg.b[1] - sg.a[1]) >= 0.9 * view.h:
+            ax, k = sg.a[0], 0
+        else:
+            continue
+        boxes = []
+        for poly in polys:
+            cs = [p[k] for p in poly]
+            os_ = [p[1 - k] for p in poly]
+            boxes.append((min(cs), max(cs), min(os_), max(os_)))
+        sides = [b for b in boxes if b[0] >= ax - eps and b[1] > ax + eps]
+        if len(polys) < 2 or not sides:
+            continue
+        mirrored = all(any(abs((2 * ax - b[1]) - o[0]) < eps and abs((2 * ax - b[0]) - o[1]) < eps and
+                           abs(b[2] - o[2]) < eps and abs(b[3] - o[3]) < eps for o in boxes) for b in sides)
+        if mirrored:
+            return True
+    return False
+
+
+def _section_views_to_hidden(named, hatches, tol, issue):
+    """Hatched regions inside a named view: the view is a section. Lines on a hatch boundary that
+    are not the view's outer outline (hole / pocket walls cut by the plane) become hidden lines.
+    Returns the number of hatch regions that lie in no named view."""
+    def on_poly(p, poly, eps):
+        for i in range(len(poly)):
+            a, b = poly[i], poly[(i + 1) % len(poly)]
+            L = math.dist(a, b)
+            if L < 1e-12:
+                continue
+            t = max(0.0, min(1.0, ((p[0] - a[0]) * (b[0] - a[0]) + (p[1] - a[1]) * (b[1] - a[1])) / (L * L)))
+            if math.dist(p, (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)) <= eps:
+                return True
+        return False
+    loose = 0
+    for poly in hatches:
+        xs, ys = [p[0] for p in poly], [p[1] for p in poly]
+        bb = (min(xs), min(ys), max(xs), max(ys))
+        host = next((v for v in named.values() if _inside(bb, v.bbox, tol * 10)), None)
+        if host is None:
+            loose += 1
+            continue
+        host.__dict__.setdefault("hatches", []).append(poly)
+    for name, v in list(named.items()):
+        polys = v.__dict__.get("hatches")
+        if not polys:
+            continue
+        area = sum(abs(0.5 * sum(p[i][0] * p[(i + 1) % len(p)][1] - p[(i + 1) % len(p)][0] * p[i][1]
+                                 for i in range(len(p)))) for p in polys)
+        if _symmetric_section(v, polys, tol) or area < 0.5 * v.w * v.h:
+            # hatched both sides of a full-length axis (a turned part the section reader could not
+            # read), or only a small broken-out part hatched: do not guess it as a plain view
+            loose += len(polys)
+            v.__dict__["hatches"] = []
+            continue
+        eps = max(tol * 10, 1e-3)
+        outer = {id(s) for _, _, s in (_graph_outer_loop(v.segs, tol) or [])}
+        n = 0
+        for sg in v.segs:
+            if sg.hidden or sg.center or id(sg) in outer or sg.kind not in ("line", "arc"):
+                continue
+            pts = [sg.a, sg.b, ((sg.a[0] + sg.b[0]) / 2, (sg.a[1] + sg.b[1]) / 2)] if sg.kind == "line" else \
+                [sg.a, sg.b, (sg.c[0] + sg.r * math.cos(math.radians((sg.a0 + ((sg.a1 - sg.a0) % 360) / 2))),
+                              sg.c[1] + sg.r * math.sin(math.radians((sg.a0 + ((sg.a1 - sg.a0) % 360) / 2))))]
+            if any(all(on_poly(p, poly, eps) for p in pts) for poly in polys):
+                sg.hidden = True
+                n += 1
+        label = {"front": "정면도", "top": "평면도", "side": "측면도"}.get(name, name)
+        issue("E207", "INFO", "%s는 단면도(해칭 %d곳)입니다 — 절단면의 구멍·홈 경계선 %d개를 숨은선처럼 읽었습니다"
+              % (label, len(polys), n))
+    return loose
+
+
 def _annotate(spec, texts, report):
     """GD&T, roughness, general tolerance, hardness, finish -> structured notes + report."""
     found = annotations.collect(texts)
@@ -938,6 +1042,7 @@ def side_hole_groups(view, tol):
     return groups
 
 
+DETAIL_FACTORS = (2, 2.5, 4, 5, 10, 20, 0.5, 0.4, 0.25, 0.2, 0.1)     # detail-view scale / sheet scale
 THREAD = re.compile(r"(?:(\d+)\s*[-xX×]\s*)?M\s*(\d+(?:\.\d+)?)(?:\s*[xX×]\s*(\d+(?:\.\d+)?))?")
 COARSE_PITCH = {1.6: 0.35, 2: 0.4, 2.5: 0.45, 3: 0.5, 4: 0.7, 5: 0.8, 6: 1.0, 8: 1.25, 10: 1.5, 12: 1.75,
                 14: 2.0, 16: 2.0, 18: 2.5, 20: 2.5, 22: 2.5, 24: 3.0, 27: 3.0, 30: 3.5, 36: 4.0}
@@ -1036,11 +1141,12 @@ def _r(v, nd=4):
     return int(v) if v.is_integer() else v
 
 
-def load_source(path):
-    """Drawing file -> primitives. DXF directly; vector PDF through pdf_reader (already in mm)."""
+def load_source(path, page=None):
+    """Drawing file -> primitives. DXF directly; vector PDF through pdf_reader (already in mm).
+    page: 1-based PDF page (None = automatic)."""
     if path.lower().endswith(".pdf"):
         from . import pdf_reader
-        p = pdf_reader.load(path)
+        p = pdf_reader.load(path, None if page is None else int(page) - 1)
         return {"kind": "pdf", "segs": p["segs"], "texts": p["texts"], "dims": p["dims"], "raw_dims": None,
                 "units": 4, "scale": 1.0, "hatch_polys": p["hatch_polys"], "issues": p["issues"],
                 "pdf_scale_mm_per_pt": p["scale_mm_per_pt"]}
@@ -1100,16 +1206,18 @@ def _try_turned_section(path, name, src, views, segs, texts, title_texts, tol, r
     }
 
 
-def extract(path, name=None, tol=None):
-    """Read a DXF drawing. Returns (spec, report)."""
+def extract(path, name=None, tol=None, page=None):
+    """Read a DXF / vector PDF drawing. Returns (spec, report). page: 1-based PDF page."""
     name = name or os.path.splitext(os.path.basename(path))[0]
     report = {"file": os.path.abspath(path), "issues": [], "views": {}, "dims": []}
 
     def issue(code, sev, msg, **kw):
         report["issues"].append(dict(code=code, severity=sev, message=msg, **kw))
 
-    src = load_source(path)
+    src = load_source(path, page)
     segs, texts, units = src["segs"], src["texts"], src["units"]
+    if page is not None and path.lower().endswith(".pdf") and name == os.path.splitext(os.path.basename(path))[0]:
+        name = "%s_p%d" % (name, int(page))       # each page of a drawing set gets its own out folder
     report["source"] = src["kind"]
     for code, sev, msg in src.get("issues", []):
         issue(code, sev, msg)
@@ -1144,12 +1252,16 @@ def extract(path, name=None, tol=None):
         if turned is not None:
             _annotate(turned, texts + title_texts, report)
             return turned, report
-    if hatches:
-        issue("E208", "BLOCK", "단면도(해칭 영역 %d개)가 있습니다. 단면도 해석은 아직 지원하지 않아 형상이 틀릴 수 있습니다 — "
-              "외형 투상도만으로 맞는지 확인해 주세요" % len(hatches),
-              question={"text": "단면도를 무시하고 외형 투상도만으로 모델링할까요?",
-                        "options": ["예, 진행", "아니오, 중단"]})
     named, projection, vissues = identify_views(views, texts + title_texts, max(tol * 10, size * 1e-4))
+    if hatches:
+        # a prismatic part drawn as a section view: its cut edges are what a plain view shows as
+        # hidden lines, so turn them into hidden lines and read the view normally
+        loose = _section_views_to_hidden(named, hatches, tol, issue)
+        if loose:
+            issue("E208", "BLOCK", "해석하지 못한 단면도가 있습니다 (해칭 영역 %d개: 부분 단면, 별도 단면도, 또는 읽지 못한 회전체). "
+                  "형상이 틀릴 수 있습니다 — 외형 투상도만으로 맞는지 확인해 주세요" % loose,
+                  question={"text": "단면도를 무시하고 외형 투상도만으로 모델링할까요?",
+                            "options": ["예, 진행", "아니오, 중단"]})
     for code, sev, msg in vissues:
         issue(code, sev, msg)
     if not named:
@@ -1171,8 +1283,28 @@ def extract(path, name=None, tol=None):
 
     # cross-check every dimension: text vs drawn geometry
     conflicts = []
+
+    def box_dist(p, v):
+        return math.hypot(max(v.bbox[0] - p[0], 0, p[0] - v.bbox[2]), max(v.bbox[1] - p[1], 0, p[1] - v.bbox[3]))
     for d in dims:
         real = d["measured"] * scale
+        if d["shown"] and unused and abs(d["shown"] - real) > max(0.05, real * 0.003):
+            # a detail view drawn at its own scale ("DETAIL A (2:1)"): its dimensions measure k x
+            ratio = real / d["shown"]
+            f = next((k for k in DETAIL_FACTORS if abs(ratio / k - 1) < 0.002), None)
+            pts = [p for p in d["points"][:3] if p]
+            if f and pts:
+                near_unused = min(box_dist(p, v) for p in pts for v in unused)
+                near_named = min(box_dist(p, v) for p in pts for v in named.values())
+                if near_unused < near_named:
+                    d["measured"] /= f
+                    d["detail_scale"] = f
+                    if d.get("view") and d in named[d["view"]].dims:
+                        named[d["view"]].dims.remove(d)
+                    d["view"] = "detail"
+                    real = d["measured"] * scale
+                    issue("E207", "INFO", "치수 '%s'는 상세도(축척 %s:%s)에 있어 그 축척으로 읽었습니다"
+                          % (_label(d["text"], real), *(("%g" % f, "1") if f >= 1 else ("1", "%g" % (1 / f)))))
         entry = {"view": d["view"], "type": d["type"], "text": d["text"], "measured_mm": round(real, 4),
                  "shown": d["shown"]}
         if d["shown"] is not None and abs(d["shown"] - real) > max(0.01, real * 1e-4):
@@ -1195,6 +1327,22 @@ def extract(path, name=None, tol=None):
         segs_mm = view_silhouette(v, tol, scale) if v is not None else None
         if segs_mm:
             report["silhouettes"][vname] = {"axes": axes, "segments": segs_mm}
+    # a section view of a prismatic part: its hatched regions are checked against the model cut (E410)
+    for vname, plane in (("front", "XZ"), ("side", "YZ")):
+        v = named.get(vname)
+        polys = (v.__dict__.get("hatches") if v is not None else None) or []
+        if polys and "section_regions" not in report:
+            cut = _cutting_plane(top, vname, tol)
+            if cut is None:          # no cutting-plane line drawn: assume the usual cut through the middle
+                other = named.get("side") if vname == "front" else named.get("front")
+                span = (top.h if vname == "front" else top.w) if top is not None else (other.w if other is not None else 0)
+                mid = span / 2
+            report["section_regions"] = {
+                "plane": plane, "offset": _r((cut if cut is not None else mid) * scale),
+                "polygons": [[[round(v.local(p)[0] * scale, 4), round(v.local(p)[1] * scale, 4)] for p in poly]
+                             for poly in polys]}
+            if cut is None:
+                report["section_regions"]["offset_from"] = "middle"
 
     # ---- overall size
     L = (top.w if top else front.w) * scale
@@ -1534,6 +1682,14 @@ def extract(path, name=None, tol=None):
                 "direction": "negative",
                 "positions": [[_r(h["center"][0]), _r(h["center"][1])] for h in hs],
                 "diameter": dn, "depth": h0["depth"]}
+        if isinstance(h0["depth"], (int, float)):
+            # blind hole: depth from a drawing dimension when one measures it
+            feat["depth"] = add_param("hd%d" % (gi + 1), h0["depth"], ("front", "side"), ("linear", "aligned"), "구멍 깊이")
+            dl = params[dn]["source"].get("label", "") if dn in params else ""
+            m = re.search(r"(?:DP|DEEP|깊이|↧)\s*(\d+(?:\.\d+)?)", dl, re.I)
+            if m and params[feat["depth"]]["source"]["type"] == "inferred" and abs(float(m.group(1)) - h0["depth"]) <= 0.01:
+                params[feat["depth"]] = {"value": _r(h0["depth"]), "source": {"type": "drawing", "view": params[dn]["source"].get("view"),
+                                                                              "label": dl, "confidence": 1.0}}
         if h0["cb"]:
             feat["hole_type"] = "counterbore"
             feat["cb_diameter"] = add_param("cb%d" % (gi + 1), h0["cb"], ("top", "front"), ("diameter", "linear"), "카운터보어 지름")

@@ -277,7 +277,7 @@ def _group_inferred(issues, limit=3):
 
 def cmd_extract(args):
     from . import drawing
-    spec_path, spec, report = drawing.extract_to(args.drawing, os.path.abspath(args.out))
+    spec_path, spec, report = drawing.extract_to(args.drawing, os.path.abspath(args.out), getattr(args, "page", None))
     drawing.print_summary(spec, report)
     print("\n→ %s" % spec_path)
     blocks = [i for i in validator.validate(spec, args.min_confidence) + report["issues"] if i["severity"] in ("BLOCK", "ERROR")]
@@ -291,7 +291,7 @@ def cmd_run(args):
     if path.lower().endswith(".json"):
         spec_path = path
     else:
-        spec_path, spec, report = drawing.extract_to(path, os.path.abspath(args.out))
+        spec_path, spec, report = drawing.extract_to(path, os.path.abspath(args.out), getattr(args, "page", None))
         drawing.print_summary(spec, report)
         # drawing-reading findings travel with the build: alerts + verify-report
         args.extra_issues = [dict(i, stage="extract") for i in report["issues"]]
@@ -320,6 +320,7 @@ def main(argv=None):
     pe = sub.add_parser("extract", help="read a drawing (.dxf / vector .pdf) into out/<name>/part-spec.json")
     pe.add_argument("drawing")
     pe.add_argument("--out", default="out")
+    pe.add_argument("--page", type=int, help="PDF page (1-based); default: the page with the most lines")
     pe.add_argument("--min-confidence", type=float, default=validator.DEFAULT_MIN_CONFIDENCE)
 
     for name, help_ in (("build", "validate, build in Fusion, measure, compare, report"),
@@ -331,6 +332,8 @@ def main(argv=None):
             pb.add_argument("--ask", action="store_true", help="always ask BLOCK questions in the terminal")
             pb.add_argument("--no-ask", action="store_true", help="never ask; stop on BLOCK")
         pb.add_argument("--out", default="out")
+        if name == "run":
+            pb.add_argument("--page", type=int, help="PDF page (1-based); default: the page with the most lines")
         pb.add_argument("--live", type=int, default=0, metavar="MS",
                         help="live build mode: pause MS milliseconds after each feature")
         pb.add_argument("--reuse-document", action="store_true",

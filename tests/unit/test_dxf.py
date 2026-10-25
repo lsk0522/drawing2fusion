@@ -228,6 +228,22 @@ class DxfReaderTests(unittest.TestCase):
         th = [f for f in spec["features"] if f.get("thread")][0]["thread"]
         self.assertEqual((th["type"], th["size_label"]), ("ANSI Unified Screw Threads", "1/4"))
 
+    @unittest.skipUnless(HAVE_PYMUPDF, "pymupdf not installed")
+    def test_pdf_pages_and_terminators(self):
+        from d2f.extract.dxf_reader import extract
+        path = os.path.join(PDF_DIR, "multipage_set.pdf")
+        spec, rep = extract(path)                                     # cover sheet skipped
+        self.assertEqual(spec["parameters"]["L"]["value"], 80)
+        spec, rep = extract(path, page=3)
+        self.assertEqual((spec["part"]["name"], spec["parameters"]["H"]["value"]), ("multipage_set_p3", 30))
+        from d2f.extract.dxf_reader import ExtractError
+        with self.assertRaises(ExtractError):
+            extract(path, page=9)
+        for name, word in (("stepped_block_ticks", "사선"), ("plate_holes_dots", "점")):
+            spec, rep = extract(os.path.join(PDF_DIR, name + ".pdf"))
+            self.assertTrue(any(word in i["message"] for i in rep["issues"] if i["code"] == "E207"))
+            self.assertEqual(rep["summary"]["dims_total"], rep["summary"]["dims_used"])
+
     def test_annotations(self):
         from d2f.extract import annotations as A
         from d2f.extract.dxf_reader import extract

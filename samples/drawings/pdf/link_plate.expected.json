@@ -25,6 +25,7 @@
   "source_dxf": "link_plate.dxf",
   "pdf": {
     "dash_style": "segments",
-    "paper_scale": 1.0
+    "paper_scale": 1.0,
+    "terminator": "arrow"
   }
 }

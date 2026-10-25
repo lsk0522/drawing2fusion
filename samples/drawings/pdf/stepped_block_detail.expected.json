@@ -1,0 +1,15 @@
+{
+  "bbox": [
+    60.0,
+    40.0,
+    30.0
+  ],
+  "holes": [],
+  "volume": 54000.0,
+  "source_dxf": "stepped_block_detail.dxf",
+  "pdf": {
+    "dash_style": "array",
+    "paper_scale": 1.0,
+    "terminator": "arrow"
+  }
+}

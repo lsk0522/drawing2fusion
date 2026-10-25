@@ -9,6 +9,7 @@
   "source_dxf": "stepped_block.dxf",
   "pdf": {
     "dash_style": "array",
-    "paper_scale": 1.0
+    "paper_scale": 1.0,
+    "terminator": "arrow"
   }
 }

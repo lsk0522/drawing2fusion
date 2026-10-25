@@ -233,6 +233,74 @@ def stepped_block():
     return s, {"bbox": [L, W, H], "holes": [], "volume": vol}
 
 
+def stepped_block_detail():
+    """stepped_block plus "DETAIL A (2:1)": the front view again at twice the size, with its own
+    dimensions (drawn 30 / 60, written 15 / 30). The reader must use them at 2:1, not as conflicts."""
+    s, exp = stepped_block()
+    s.title = "STEPPED_BLOCK_DETAIL"
+    L, W, H, h1, step_x = 60.0, 40.0, 30.0, 15.0, 30.0
+    k, ox = 2.0, L + GAP + W + GAP
+    s.poly([(ox, 0), (ox + L * k, 0), (ox + L * k, h1 * k), (ox + step_x * k, h1 * k), (ox + step_x * k, H * k), (ox, H * k)])
+    s.vdim((ox + L * k, 0), (ox + L * k, h1 * k), ox + L * k + 12, text="15")
+    s.hdim((ox, H * k), (ox + step_x * k, H * k), H * k + 10, text="30")
+    s.note((ox, -20), "DETAIL A (2:1)")
+    return s, exp
+
+
+def block_pocket_section():
+    """Prismatic block whose front view is a full section A-A (cut at Y=20, hatched): a Ø10 through
+    hole and a Ø16 x 12 deep pocket from the top show as cut edges, not hidden lines."""
+    L, W, H = 80.0, 40.0, 30.0
+    hx, hd = 20.0, 10.0                 # through hole
+    px, pd, pdep = 55.0, 16.0, 12.0     # blind pocket from the top
+    s = Sheet("BLOCK_POCKET_SECTION")
+    ty, rx = H + GAP, L + GAP
+    zb = H - pdep
+    a, b = hx - hd / 2, hx + hd / 2
+    c, d = px - pd / 2, px + pd / 2
+    # front view = section: outline + cut edges of the hole and the pocket
+    s.rect(0, 0, L, H)
+    for x in (a, b):
+        s.line((x, 0), (x, H))
+    s.line((c, H), (c, zb))
+    s.line((c, zb), (d, zb))
+    s.line((d, zb), (d, H))
+    s.hatch([(0, 0), (a, 0), (a, H), (0, H)])
+    s.hatch([(b, 0), (L, 0), (L, H), (d, H), (d, zb), (c, zb), (c, H), (b, H)])
+    for x in (hx, px):
+        s.line((x, -3), (x, H + 3), "CENTER")
+    s.note((0, -22), "SECTION A-A")
+    # top view with the cutting plane line
+    s.rect(0, ty, L, W)
+    s.circle((hx, ty + 20), hd / 2)
+    s.circle((px, ty + 20), pd / 2)
+    for x in (hx, px):
+        s.center_mark((x, ty + 20), 8)
+    s.line((-6, ty + 20), (L + 6, ty + 20), "CENTER")          # cutting plane A-A
+    s.note((-10, ty + 22), "A")
+    s.note((L + 6, ty + 22), "A")
+    # right view: hidden lines of both
+    s.rect(rx, 0, W, H)
+    for y in (20 - hd / 2, 20 + hd / 2):
+        s.hidden_v(rx + y, 0, H)
+    for y in (20 - pd / 2, 20 + pd / 2):
+        s.hidden_v(rx + y, zb, H)
+    s.hidden_h(zb, rx + 20 - pd / 2, rx + 20 + pd / 2)
+    s.hdim((0, 0), (L, 0), -12)
+    s.vdim((L, 0), (L, H), L + 12)
+    s.vdim((0, ty), (0, ty + W), -12)
+    s.hdim((0, ty + W), (hx, ty + 20), ty + W + 10)
+    s.hdim((hx, ty + 20), (px, ty + 20), ty + W + 10)
+    s.vdim((L, ty), (px, ty + 20), L + 12)
+    s.vdim((d, zb), (d, H), L + 24)
+    s.ddim((hx, ty + 20), hd / 2, angle=135, text="%%c<>")
+    s.ddim((px, ty + 20), pd / 2, angle=45, text="%%c<>")
+    vol = L * W * H - math.pi * (hd / 2) ** 2 * H - math.pi * (pd / 2) ** 2 * pdep
+    return s, {"bbox": [L, W, H], "holes": [{"axis": "Z", "diameter": hd, "positions": [[hx, 20]]},
+                                             {"axis": "Z", "diameter": pd, "positions": [[px, 20]]}],
+               "volume": vol}
+
+
 def flange():
     D, T, hub, hh, bore, pcd, bd = 100.0, 12.0, 60.0, 10.0, 40.0, 75.0, 9.0
     s = Sheet("FLANGE")
@@ -761,6 +829,8 @@ PARTS = {
     "plate_holes": plate_holes,
     "bracket_l": bracket_l,
     "stepped_block": stepped_block,
+    "stepped_block_detail": stepped_block_detail,
+    "block_pocket_section": block_pocket_section,
     "flange": flange,
     "plate_one_view": plate_one_view,
     "broken_dim_override": broken_dim_override,
