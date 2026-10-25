@@ -70,6 +70,16 @@ def extract_to(path, out_root, page=None):
     spec_path = os.path.join(out_dir, "part-spec.json")
     with open(spec_path, "w", encoding="utf-8") as f:
         json.dump(spec, f, ensure_ascii=False, indent=2)
+    overlay_data = report.pop("_overlay", None)
+    if overlay_data:
+        try:
+            from . import overlay
+            png = overlay.render(overlay_data, os.path.join(out_dir, "reading.png"))
+            if png:
+                report["reading_png"] = png
+        except Exception as e:                     # the picture is a convenience, never a failure
+            report.setdefault("issues", []).append({"code": "E207", "severity": "INFO",
+                                                    "message": "도면 해석 그림(reading.png)을 만들지 못했습니다: %s" % e})
     with open(os.path.join(out_dir, "extract-report.json"), "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=2)
     return spec_path, spec, report

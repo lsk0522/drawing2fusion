@@ -12,7 +12,7 @@ from . import builder, verifier
 from .bridge import PROTOCOL_VERSION
 from .log import log
 
-ADDIN_VERSION = "0.3.0"
+ADDIN_VERSION = "0.4.0"
 _PKG_DIR = os.path.dirname(os.path.abspath(__file__))
 # Modules reloaded in place by the "reload" command (dependency order). Reloading
 # keeps the module objects, so the running bridge and handlers see the new code.

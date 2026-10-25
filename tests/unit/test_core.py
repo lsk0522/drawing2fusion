@@ -152,6 +152,26 @@ class ValidateTests(unittest.TestCase):
         spec["parameters"]["pcd"]["value"] = 95          # the copies on the far side leave the plate
         self.assertIn("E205", codes(validate.validate(spec), "ERROR"))
 
+    def test_view_circles_e411(self):
+        from d2f import circles
+        hole = lambda d, p, ax=(0, 0, 1): {"diameter": d, "axis_dir": list(ax), "axis_point": list(p), "coverage": 1.0}  # noqa: E731
+        measure = {"bodies": [{"holes": [hole(6.6, (10, 10, 0)), hole(6.6, (70, 10, 0)), hole(5.035, (40, 20, 0)),
+                                         hole(10, (20, 0, 15), (0, 1, 0))],
+                               "bosses": []}]}
+        vc = {"top": {"axis": "Z", "circles": [[10, 10, 3.3], [70, 10, 3.3], [40, 20, 3.0, 2.5]], "hidden": []},
+              "front": {"axis": "Y", "circles": [[20, 15, 5]], "hidden": []}}
+        rows = circles.compare_circles(vc, measure)
+        self.assertTrue(all(r["pass"] for r in rows), rows)       # tapped M6 drawn Ø6, modelled Ø5.035
+        # the spec "forgot" one plan-view hole (and its checks): the drawing circle still has no cylinder
+        measure["bodies"][0]["holes"].pop(1)
+        r = [x for x in circles.compare_circles(vc, measure) if x["view"] == "top"][0]
+        self.assertEqual((r["pass"], r["code"]), (False, "E411"))
+        self.assertIn("70.00", r["message"])
+        # a model hole the drawing does not show
+        measure["bodies"][0]["holes"].append(hole(4, (50, 30, 0)))
+        r = [x for x in circles.compare_circles(vc, measure) if x["view"] == "top"][0]
+        self.assertIn("도면에 원이 없음", r["message"])
+
     def test_undefined_and_reserved(self):
         spec = {"schema_version": "0.1", "part": {"name": "x"},
                 "parameters": {"9x": {"value": 1}, "L": {"value": 10}},

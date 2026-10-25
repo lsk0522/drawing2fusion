@@ -157,6 +157,7 @@ def cmd_build(args, measure_only=False):
 
     # 3. measure + compare -------------------------------------------------------
     rows = []
+    measure = None
     try:
         measure = client.measure(comparator.checked_features(spec))
         _write(os.path.join(out_dir, "measurements.json"), measure)
@@ -190,6 +191,16 @@ def cmd_build(args, measure_only=False):
                                      "형상을 잘못 읽었을 수 있습니다.")
         except BridgeError as e:
             alert(e.code, "WARN", "verify", "실루엣 측정 실패", str(e))
+    # 3c. circles drawn in the views vs model cylinders (E411, independent of the spec)
+    vc = (xrep or {}).get("view_circles")
+    if vc and measure:
+        from . import circles
+        crows = circles.compare_circles(vc, measure)
+        rows += crows
+        for r in crows:
+            if not r["pass"]:
+                alert(r["code"], r["severity"], "verify", r["title"], r["message"], where={"check": r["check"]},
+                      suggestion="스펙에서 빠진 구멍(또는 도면에 없는 구멍)이 있는지 확인하세요.")
     if not spec.get("checks"):
         alert("E401", "WARN", "verify", "검증 항목 없음",
               "spec에 checks가 없어 치수 검증을 하지 못했습니다.")

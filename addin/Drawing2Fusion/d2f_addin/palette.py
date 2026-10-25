@@ -148,6 +148,14 @@ def _on_done(code):
             pass
     if code == 2 and spec and os.path.exists(spec):
         payload["questions"] = _questions(spec)
+    png = os.path.join(payload["out_dir"] or "", "reading.png")
+    if payload["out_dir"] and os.path.exists(png) and os.path.getsize(png) < 6 * 1024 * 1024:
+        try:
+            import base64
+            with open(png, "rb") as f:
+                payload["reading"] = "data:image/png;base64," + base64.b64encode(f.read()).decode("ascii")
+        except Exception:
+            pass
     _send("done", payload)
 
 

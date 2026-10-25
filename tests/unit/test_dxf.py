@@ -244,6 +244,34 @@ class DxfReaderTests(unittest.TestCase):
             self.assertTrue(any(word in i["message"] for i in rep["issues"] if i["code"] == "E207"))
             self.assertEqual(rep["summary"]["dims_total"], rep["summary"]["dims_used"])
 
+    def test_reading_overlay_and_view_circles(self):
+        import tempfile
+        from d2f import drawing
+        out = tempfile.mkdtemp()
+        spec_path, spec, report = drawing.extract_to(os.path.join(DXF_DIR, "bracket_l.dxf"), out)
+        self.assertNotIn("_overlay", report)                          # never written into the JSON
+        try:
+            import PIL  # noqa: F401
+        except ImportError:
+            self.skipTest("Pillow not installed")
+        self.assertTrue(os.path.exists(os.path.join(out, "bracket_l", "reading.png")))
+        from d2f.extract.dxf_reader import extract
+        spec, rep = extract(os.path.join(DXF_DIR, "bracket_l.dxf"))
+        st = {}
+        for d in rep["_overlay"]["dims"]:
+            st[d["status"]] = st.get(d["status"], 0) + 1
+            self.assertEqual(len(d["line"]), 2)
+        self.assertEqual(st.get("used", 0), rep["summary"]["dims_used"])
+        self.assertEqual(spec["parameters"]["h1_x1"]["source"]["label"], "45")
+        # drawn circles per view, in model mm (tapped holes carry the tap drill as alternative)
+        spec, rep = extract(os.path.join(DXF_DIR, "plate_tapped.dxf"))
+        top = rep["view_circles"]["top"]
+        self.assertEqual(top["axis"], "Z")
+        self.assertIn([10, 10, 2.5], [c[:3] for c in top["circles"]])
+        spec, rep = extract(os.path.join(DXF_DIR, "block_side_holes.dxf"))
+        self.assertEqual(rep["view_circles"]["front"]["circles"], [[20, 15, 5]])
+        self.assertEqual(rep["view_circles"]["side"]["axis"], "X")
+
     def test_annotations(self):
         from d2f.extract import annotations as A
         from d2f.extract.dxf_reader import extract

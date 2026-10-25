@@ -73,6 +73,7 @@ def t_extract(a):
     spec_path, spec, report = res
     issues = validator.validate(spec) + report["issues"]
     return {"ok": True, "spec": spec_path, "projection": report.get("projection"),
+            "reading_png": report.get("reading_png"),
             "summary": report.get("summary"), "parameters": {k: {"value": v.get("value"),
                                                                  "source": (v.get("source") or {}).get("type"),
                                                                  "label": (v.get("source") or {}).get("label")}
@@ -208,7 +209,7 @@ def handle(msg):
     if method == "initialize":
         result = {"protocolVersion": params.get("protocolVersion", PROTOCOL),
                   "capabilities": {"tools": {"listChanged": False}},
-                  "serverInfo": {"name": "drawing2fusion", "version": "0.3.0"},
+                  "serverInfo": {"name": "drawing2fusion", "version": "0.4.0"},
                   "instructions": "도면 → Fusion 모델 → 검증. 보통 순서: d2f_extract → (질문 있으면 d2f_answer) → "
                                   "d2f_build → 실패 검사를 보고 d2f_get_spec/d2f_put_spec 으로 고친 뒤 다시 d2f_build."}
     elif method == "ping":

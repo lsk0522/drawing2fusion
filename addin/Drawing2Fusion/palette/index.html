@@ -60,6 +60,12 @@
     <details><summary>실행 기록</summary><pre id="log"></pre></details>
   </div>
 
+  <div class="card hidden" id="rcard">
+    <div class="t" style="font-weight:600">도면 해석</div>
+    <div class="sub" style="margin:2px 0 6px">초록 = 파라미터로 쓴 치수 · 빨강 = 문자와 형상 불일치 · 주황 = 상세도 축척 · 회색 = 안 쓴 치수</div>
+    <img id="reading" alt="도면 해석 그림" style="width:100%;border:1px solid var(--line);border-radius:4px;background:#fff;cursor:zoom-in">
+  </div>
+
   <div class="card hidden" id="qcard">
     <div class="t" style="font-weight:600">확인이 필요한 값</div>
     <div id="questions"></div>
@@ -127,6 +133,7 @@ window.fusionJavaScriptHandler = {
     if (action === "hello") { log("프로젝트: " + data.root + "\nPython: " + data.python); }
     else if (action === "started") {
       $("alerts").innerHTML = ""; $("log").textContent = ""; $("qcard").classList.add("hidden");
+      $("rcard").classList.add("hidden");
       $("file").textContent = data.label; status("실행 중…", ""); $("pick").disabled = true;
       log("$ " + data.cmd);
     }
@@ -135,6 +142,7 @@ window.fusionJavaScriptHandler = {
     else if (action === "done") {
       $("pick").disabled = false; $("rerun").disabled = false;
       outDir = data.out_dir; $("folder").disabled = !outDir;
+      if (data.reading) { $("reading").src = data.reading; $("rcard").classList.remove("hidden"); }
       if (data.code === 0) status("✅ 완료 · 치수 검증 " + data.passed + "/" + data.total + " 통과", "ok");
       else if (data.code === 1) status("🔴 문제 있음 · 치수 검증 " + (data.passed ?? "-") + "/" + (data.total ?? "-"), "err");
       else if (data.code === 2) { status("🟠 확인이 필요한 값이 있습니다", "warn"); if (data.questions) showQuestions(data.questions); }
@@ -145,6 +153,14 @@ window.fusionJavaScriptHandler = {
   }
 };
 window.addEventListener("load", () => setTimeout(() => send("ready"), 300));
+document.addEventListener("click", (e) => {
+  if (e.target && e.target.id === "reading") {
+    const big = e.target.style.width === "100%";
+    e.target.style.width = big ? "250%" : "100%";
+    e.target.style.cursor = big ? "zoom-out" : "zoom-in";
+    e.target.parentElement.style.overflow = "auto";
+  }
+});
 </script>
 </body>
 </html>

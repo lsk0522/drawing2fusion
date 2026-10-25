@@ -83,6 +83,14 @@ def _feature(fid, fn):
     return f
 
 
+def _drop_feature(fid):
+    """Remove a feature AND every check that mentions it (what a careless spec edit does)."""
+    def f(spec):
+        spec["features"] = [x for x in spec["features"] if x["id"] != fid]
+        spec["checks"] = [c for c in spec.get("checks", []) if not c.get("id", "").startswith("c_%s_" % fid)]
+    return f
+
+
 MUTATIONS = [
     ("block_basic", "길이 L 80→90 (치수 오독)", _set_param("L", 90), "E406"),
     ("stepped_block", "윗단 길이 bx2 30→40", _set_param("bx2", 40), "E406"),
@@ -95,6 +103,7 @@ MUTATIONS = [
     ("slanted_block", "경사 시작 높이 f_v1 20→25 (경사면이 다른 자리)", _set_param("f_v1", 25), "E406"),
     ("flange", "볼트 원 P.C.D 75→80 (원형 배열 반지름 오독)", _set_param("pcd1", 80), "E404"),
     ("block_pocket_section", "포켓 깊이 hd2 12→4 (단면도 경계 오독)", _set_param("hd2", 4), "E410"),
+    ("plate_tapped", "구멍 h2(Ø8)를 검사 항목과 함께 통째로 빠뜨림", _drop_feature("h2"), "E411"),
     ("plate_unc", "인치 나사 1/4-20 UNC를 M6로 오독",
      _feature("h1", lambda f: f.__setitem__("thread", {"designation": "M6x1", "size": 6, "pitch": 1, "class": "6H",
                                                        "modeled": False})), "E409"),

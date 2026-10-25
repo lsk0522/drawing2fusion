@@ -875,6 +875,65 @@ def _section_views_to_hidden(named, hatches, tol, issue):
     return loose
 
 
+def _dim_line(d, pts):
+    """Where to draw a dimension in the overlay: (two end points of what it measures, label point).
+    PDF dims carry [text, tip, tip]; DXF dims carry the DIMENSION definition points + text point."""
+    m = d["measured"]
+    if d.get("entity") is None:
+        return (pts[1], pts[2]) if len(pts) >= 3 else (pts[0], pts[0]), pts[0]
+    label = pts[-1] if len(pts) >= 3 else pts[0]
+    cands = pts[:-1] if len(pts) >= 3 else pts
+    tol = max(1e-6, m * 1e-3)
+    best = None
+    for i in range(len(cands)):
+        for j in range(i + 1, len(cands)):
+            a, b = cands[i], cands[j]
+            if d["type"] == "linear" and abs(abs(a[0] - b[0]) - m) < tol:          # horizontal: along the dim line
+                y = cands[0][1]
+                best = best or ((a[0], y), (b[0], y))
+            elif d["type"] == "linear" and abs(abs(a[1] - b[1]) - m) < tol:        # vertical
+                x = cands[0][0]
+                best = best or ((x, a[1]), (x, b[1]))
+            elif abs(math.dist(a, b) - m) < tol:
+                best = best or (a, b)
+    return best or (label, label), label
+
+
+def _overlay_data(name, segs, named, unused, dims, used_dims, last_dim, scale):
+    """Primitives + dimension statuses for d2f/overlay.py (drawing units; not written to JSON)."""
+    def r(v):
+        return round(v, 4)
+    out = []
+    for sg in segs:
+        if sg.kind == "line":
+            out.append(["l", r(sg.a[0]), r(sg.a[1]), r(sg.b[0]), r(sg.b[1]), sg.hidden, sg.center])
+        elif sg.kind == "circle":
+            out.append(["c", r(sg.c[0]), r(sg.c[1]), r(sg.r), sg.hidden, sg.center])
+        elif sg.kind == "arc":
+            out.append(["a", r(sg.c[0]), r(sg.c[1]), r(sg.r), r(sg.a0), r(sg.a1), sg.hidden, sg.center])
+    param_of = {id(d): p for p, d in last_dim.items() if d is not None}
+    dd = []
+    for d in dims:
+        pts = [p for p in d.get("points") or [] if p]
+        if not pts:
+            continue
+        if d.get("conflict"):
+            status = "conflict"
+        elif d.get("detail_scale"):
+            status = "detail"
+        elif id(d) in used_dims:
+            status = "used"
+        else:
+            status = "unused"
+        line, label_at = _dim_line(d, pts)
+        dd.append({"points": [[r(p[0]), r(p[1])] for p in pts], "line": [[r(p[0]), r(p[1])] for p in line],
+                   "label_at": [r(label_at[0]), r(label_at[1])], "status": status,
+                   "text": _label(d.get("text"), d["measured"] * scale), "param": param_of.get(id(d))})
+    return {"name": name, "segs": out, "dims": dd,
+            "views": {k: [r(x) for x in v.bbox] for k, v in named.items()},
+            "unused_views": [[r(x) for x in v.bbox] for v in unused]}
+
+
 def _annotate(spec, texts, report):
     """GD&T, roughness, general tolerance, hardness, finish -> structured notes + report."""
     found = annotations.collect(texts)
@@ -1733,6 +1792,7 @@ def extract(path, name=None, tol=None, page=None):
                        "expected": feat["positions"]})
         if hole_checks_tol:
             checks[-1]["diameter_tol"] = checks[-2]["diameter_tol"] = hole_checks_tol
+        pat = None
         if not th and len(hs) >= 2:
             pat = _hole_pattern([h["center"] for h in hs], gi + 1, L, W, add_param, params)
             if pat:
@@ -1740,6 +1800,22 @@ def extract(path, name=None, tol=None, page=None):
                 pat["feature"]["features"] = [feat["id"]]
                 features.append(pat["feature"])
                 notes.append({"text": pat["note"], "applied": True, "reason": "같은 구멍의 규칙 배열"})
+        if not pat:
+            # hole positions measured by drawing dimensions become parameters (new list: the
+            # position check keeps the plain numbers read from the drawing)
+            newpos = []
+            for k, (x, y) in enumerate(feat["positions"]):
+                pos = []
+                for axis_i, v in enumerate((x, y)):
+                    pname = "h%d_%s%d" % (gi + 1, "xy"[axis_i], k + 1)
+                    add_param(pname, v, ("top",), what="구멍 위치")
+                    if (params[pname].get("source") or {}).get("type") == "inferred":
+                        del params[pname]
+                        pos.append(v)
+                    else:
+                        pos.append(pname)
+                newpos.append(pos)
+            feat["positions"] = newpos
         r = h0["d"] / 2
         for h in hs:
             # through: the material under the surface at the hole centre (a sloped top cuts a
@@ -1867,6 +1943,29 @@ def extract(path, name=None, tol=None, page=None):
             else:
                 features_vol -= math.pi * r * r * depth_mm
 
+    # ---- circles drawn in each view (E411: checked against the model's cylinders after the build)
+    tapped = {}
+    for gidx, lab in thread_of.items():
+        g = top_groups[gidx]
+        tapped[(round(g["center"][0] * scale, 3), round(g["center"][1] * scale, 3))] = lab["drill"] / 2
+    report["view_circles"] = {}
+    for vname, axis in (("top", "Z"), ("front", "Y"), ("side", "X")):
+        v = named.get(vname)
+        if v is None:
+            continue
+        vis, hid = [], []
+        for sg in v.segs:
+            if sg.kind != "circle" or sg.center:
+                continue
+            u, w = v.local(sg.c)
+            c = [_r(u * scale, 4), _r(w * scale, 4), _r(sg.r * scale, 4)]
+            alt = tapped.get((round(c[0], 3), round(c[1], 3))) if axis == "Z" else None
+            if alt is not None and abs(alt - c[2]) > 1e-6:
+                c.append(_r(alt, 4))              # tapped hole: the model carries the tap drill
+            (hid if sg.hidden else vis).append(c)
+        if vis or hid:
+            report["view_circles"][vname] = {"axis": axis, "circles": vis, "hidden": hid}
+
     checks.insert(0, {"id": "c_bbox", "kind": "bbox", "expected": ["L", "W", "H"]})
     checks.append({"id": "c_vol", "kind": "volume", "expected": _r(features_vol, 3) if vol_ok else None,
                    "note": "도면에서 계산한 부피" if vol_ok else "곡선 외곽 근사로 기록만"})
@@ -1893,5 +1992,7 @@ def extract(path, name=None, tol=None, page=None):
         spec["part"]["note"] = "원점 = 외곽 바운딩 박스 최소 모서리"
     report["summary"] = {"views": sorted(named), "bands": len(bands), "holes": len(hole_specs),
                          "dims_total": len(dims), "dims_used": len(used_dims), "conflicts": len(conflicts)}
+    report["_overlay"] = _overlay_data(name, segs, named, [v for v in views if all(v is not u for u in named.values())],
+                                       dims, used_dims, last_dim, scale)
     _annotate(spec, texts + title_texts, report)
     return spec, report
