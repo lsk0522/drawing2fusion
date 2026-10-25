@@ -113,3 +113,40 @@ def _post_json(url, payload):
                                  headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(req, timeout=15) as resp:
         resp.read()
+
+
+def test_channels(channels=("discord", "telegram")):
+    """Send one test message per external channel. Returns [{channel, status, detail}] where
+    status is 'sent', 'not_configured' or 'failed'. Secrets are never echoed back."""
+    text = format_text(make_alert("notify-test", None, "DONE", "test", "Drawing2Fusion 알림 테스트",
+                                  "이 메시지가 보이면 알림 설정이 맞습니다."))
+    out = []
+    for ch in channels:
+        if ch == "discord":
+            url = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
+            if not url:
+                out.append({"channel": ch, "status": "not_configured", "detail": ".env 에 DISCORD_WEBHOOK_URL 이 비어 있습니다"})
+                continue
+            target = lambda: _post_json(url, {"content": text[:1900]})      # noqa: E731
+        elif ch == "telegram":
+            token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+            chat = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+            if not (token and chat):
+                missing = [n for n, v in (("TELEGRAM_BOT_TOKEN", token), ("TELEGRAM_CHAT_ID", chat)) if not v]
+                out.append({"channel": ch, "status": "not_configured", "detail": ".env 에 %s 가 비어 있습니다" % ", ".join(missing)})
+                continue
+            base = os.environ.get("D2F_TELEGRAM_API", "https://api.telegram.org")
+            target = lambda: _post_json("%s/bot%s/sendMessage" % (base, token), {"chat_id": chat, "text": text[:4000]})  # noqa: E731
+        else:
+            out.append({"channel": ch, "status": "failed", "detail": "알 수 없는 채널"})
+            continue
+        try:
+            target()
+            out.append({"channel": ch, "status": "sent", "detail": "테스트 메시지를 보냈습니다"})
+        except Exception as e:
+            msg = str(e)
+            for secret in (os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("DISCORD_WEBHOOK_URL")):
+                if secret:
+                    msg = msg.replace(secret, "***")
+            out.append({"channel": ch, "status": "failed", "detail": msg[:200]})
+    return out

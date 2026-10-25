@@ -1,0 +1,93 @@
+{
+  "schema_version": "0.1",
+  "part": {
+    "name": "loft_square_to_round",
+    "drawing": {
+      "file": "(hand-written)",
+      "units": "mm"
+    },
+    "note": "Loft from a 30x30 square at Z=0 to a Ø20 circle at Z=40 (transition piece)."
+  },
+  "parameters": {
+    "A": {
+      "value": 30,
+      "source": {
+        "type": "user"
+      }
+    },
+    "D": {
+      "value": 20,
+      "source": {
+        "type": "user"
+      }
+    },
+    "H": {
+      "value": 40,
+      "source": {
+        "type": "user"
+      }
+    }
+  },
+  "features": [
+    {
+      "id": "sk_bottom",
+      "type": "sketch",
+      "plane": "XY",
+      "entities": [
+        {
+          "kind": "rect",
+          "corner": [
+            "-A/2",
+            "-A/2"
+          ],
+          "size": [
+            "A",
+            "A"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sk_top",
+      "type": "sketch",
+      "plane": "XY",
+      "offset": "H",
+      "entities": [
+        {
+          "kind": "circle",
+          "center": [
+            0,
+            0
+          ],
+          "diameter": "D"
+        }
+      ]
+    },
+    {
+      "id": "lf_body",
+      "type": "loft",
+      "sections": [
+        "sk_bottom",
+        "sk_top"
+      ],
+      "operation": "new_body"
+    }
+  ],
+  "checks": [
+    {
+      "id": "c_bbox",
+      "kind": "bbox",
+      "expected": [
+        "A",
+        "A",
+        "H"
+      ]
+    },
+    {
+      "id": "c_vol",
+      "kind": "volume",
+      "expected": null,
+      "note": "loft volume depends on the blend: recorded only"
+    }
+  ]
+}

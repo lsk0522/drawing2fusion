@@ -4,14 +4,16 @@ import json
 
 from . import expr
 
-FEATURE_TYPES = {"sketch", "extrude", "revolve", "hole", "fillet", "chamfer", "pattern_rect", "pattern_circ"}
+FEATURE_TYPES = {"sketch", "extrude", "revolve", "hole", "fillet", "chamfer", "pattern_rect", "pattern_circ",
+                 "shell", "draft", "sweep", "loft"}
+FACE_SELECTORS = {"top", "bottom", "front", "back", "left", "right", "vertical_outer", "side_all"}
 PLANNED_TYPES = set()
 ENTITY_KINDS = {"rect", "circle", "line", "polyline", "arc", "slot", "path"}
 PLANES = {"XY", "XZ", "YZ"}
 # Fields whose values are dimensions (numbers or parameter expressions).
 VALUE_FIELDS = {"offset", "distance", "diameter", "radius", "depth", "angle", "sweep",
                 "cb_diameter", "cb_depth", "cs_diameter", "cs_angle", "size", "corner", "center",
-                "start", "end", "points", "positions", "width", "count", "pitch", "to"}
+                "start", "end", "points", "positions", "width", "count", "pitch", "to", "thickness"}
 NESTED_FIELDS = {"x", "y", "face"}
 DEFAULT_MIN_CONFIDENCE = 0.8
 
@@ -155,6 +157,36 @@ def validate(spec, min_confidence=DEFAULT_MIN_CONFIDENCE):
                 if d is not None and cs is not None and cs <= d:
                     issues.append(_issue("E205", "ERROR", "countersink '%s': cs_diameter %g must be larger "
                                          "than diameter %g" % (fid, cs, d), where))
+        if ftype == "shell" and "thickness" not in f:
+            issues.append(_issue("E202", "BLOCK", "shell '%s' has no thickness" % fid, where,
+                                 {"text": "'%s' 셸 두께를 입력해 주세요" % fid, "input": {"type": "number", "unit": "mm"}}))
+        if ftype in ("shell", "draft"):
+            fsel = (f.get("faces") or {}).get("select", "")
+            if ftype == "draft" and not fsel:
+                issues.append(_issue("E201", "ERROR", "draft '%s' needs faces: {select: ...}" % fid, where))
+            elif fsel and fsel not in FACE_SELECTORS and not fsel.startswith("faces_of:"):
+                issues.append(_issue("E201", "ERROR", "unknown face selector '%s' (%s)" % (fsel, ", ".join(sorted(FACE_SELECTORS))),
+                                     where))
+            elif fsel.startswith("faces_of:") and fsel.split(":", 1)[1] not in seen:
+                issues.append(_issue("E206", "ERROR", "'%s' refers to unknown feature in '%s'" % (fid, fsel), where))
+        if ftype == "draft" and "angle" not in f:
+            issues.append(_issue("E202", "BLOCK", "draft '%s' has no angle" % fid, where))
+        if ftype == "sweep":
+            for key in ("profile", "path"):
+                if f.get(key) not in sketches:
+                    issues.append(_issue("E206", "ERROR", "sweep '%s' %s '%s' is not an earlier sketch"
+                                         % (fid, key, f.get(key)), where))
+            path_sk = next((x for x in features[:i] if x.get("id") == f.get("path")), None)
+            if path_sk is not None and path_sk.get("require_profile", True):
+                issues.append(_issue("E201", "ERROR", "sweep path sketch '%s' is an open path: set \"require_profile\": false"
+                                     % f.get("path"), where))
+        if ftype == "loft":
+            secs = f.get("sections") or []
+            if len(secs) < 2:
+                issues.append(_issue("E201", "ERROR", "loft '%s' needs at least 2 sections" % fid, where))
+            for sid in secs:
+                if sid not in sketches:
+                    issues.append(_issue("E206", "ERROR", "loft '%s' section '%s' is not an earlier sketch" % (fid, sid), where))
         if ftype in ("pattern_rect", "pattern_circ"):
             refs = f.get("features") or []
             if not refs:

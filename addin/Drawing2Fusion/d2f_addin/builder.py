@@ -869,6 +869,88 @@ def build_pattern_circ(ctx, f):
     return pat
 
 
+def _faces(ctx, f, key="faces", allow_empty=False):
+    sel = f.get(key) or {}
+    if not sel and allow_empty:
+        return []
+    faces = selectors.select_faces(ctx, sel)
+    expect = sel.get("expect")
+    if (not faces and not allow_empty) or (expect is not None and len(faces) != int(expect)):
+        raise BuildError("E305", "face selector %s matched %d faces%s"
+                         % (sel, len(faces), "" if expect is None else " (expected %s)" % expect))
+    return faces
+
+
+def _coll(items):
+    coll = adsk.core.ObjectCollection.create()
+    for it in items:
+        coll.add(it)
+    return coll
+
+
+def build_shell(ctx, f):
+    """{faces: {select: "top"} (removed / open faces; none = hollow closed body), thickness, direction: inside|outside}"""
+    faces = _faces(ctx, f, allow_empty=True)
+    entities = faces if faces else [selectors._target_body(ctx, (f.get("faces") or {}).get("of"))]
+    shells = ctx.root.features.shellFeatures
+    inp = shells.createInput(_coll(entities), False)
+    if f.get("direction", "inside") == "outside":
+        inp.outsideThickness = ctx.vi(f["thickness"])
+    else:
+        inp.insideThickness = ctx.vi(f["thickness"])
+    sh = shells.add(inp)
+    sh.name = f["id"]
+    return sh
+
+
+def build_draft(ctx, f):
+    """{faces: {select: "vertical_outer"}, plane: "XY", offset: 0 (neutral plane / pull direction), angle (deg), flip}"""
+    faces = _faces(ctx, f)
+    plane = resolve_plane(ctx, f.get("plane", "XY"), f.get("offset", 0), f["id"])
+    drafts = ctx.root.features.draftFeatures
+    inp = drafts.createInput(_coll(faces), plane, True)
+    inp.setSingleAngle(bool(f.get("flip", False)), ctx.vi(f["angle"], "deg"))
+    dr = drafts.add(inp)
+    dr.name = f["id"]
+    return dr
+
+
+def _path_curve(ctx, sketch_id):
+    sk = ctx.objects.get(sketch_id)
+    if sk is None:
+        raise BuildError("E206", "path sketch '%s' not built" % sketch_id)
+    curves = [sk.sketchCurves.item(i) for i in range(sk.sketchCurves.count)]
+    curves = [c for c in curves if not c.isConstruction]
+    if not curves:
+        raise BuildError("E301", "path sketch '%s' has no curves" % sketch_id)
+    return ctx.root.features.createPath(curves[0], True)        # the connected chain from the first curve
+
+
+def build_sweep(ctx, f):
+    """{profile: sketch id, path: sketch id (open lines / arcs), operation, orientation: perpendicular|parallel}"""
+    profile = _profiles(ctx, f["profile"], f.get("profiles"))
+    path = _path_curve(ctx, f["path"])
+    sweeps = ctx.root.features.sweepFeatures
+    inp = sweeps.createInput(profile, path, _operation(f.get("operation")))
+    O = adsk.fusion.SweepOrientationTypes
+    inp.orientation = O.ParallelOrientationType if f.get("orientation") == "parallel" else O.PerpendicularOrientationType
+    sw = sweeps.add(inp)
+    sw.name = f["id"]
+    return sw
+
+
+def build_loft(ctx, f):
+    """{sections: [sketch ids, in order], operation, solid: true}"""
+    lofts = ctx.root.features.loftFeatures
+    inp = lofts.createInput(_operation(f.get("operation")))
+    for sid in f["sections"]:
+        inp.loftSections.add(_profiles(ctx, sid, "largest"))
+    inp.isSolid = bool(f.get("solid", True))
+    lf = lofts.add(inp)
+    lf.name = f["id"]
+    return lf
+
+
 BUILDERS = {
     "sketch": build_sketch,
     "extrude": build_extrude,
@@ -878,6 +960,10 @@ BUILDERS = {
     "chamfer": build_chamfer,
     "pattern_rect": build_pattern_rect,
     "pattern_circ": build_pattern_circ,
+    "shell": build_shell,
+    "draft": build_draft,
+    "sweep": build_sweep,
+    "loft": build_loft,
 }
 
 

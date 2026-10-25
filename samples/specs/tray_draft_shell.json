@@ -1,0 +1,109 @@
+{
+  "schema_version": "0.1",
+  "part": {
+    "name": "tray_draft_shell",
+    "material": "ABS",
+    "drawing": {
+      "file": "(hand-written)",
+      "units": "mm"
+    },
+    "note": "Draft 3 deg on the outer walls (neutral plane = bottom), then shell 2 mm with the top face open."
+  },
+  "parameters": {
+    "L": {
+      "value": 60.0,
+      "source": {
+        "type": "user"
+      }
+    },
+    "W": {
+      "value": 40.0,
+      "source": {
+        "type": "user"
+      }
+    },
+    "H": {
+      "value": 25.0,
+      "source": {
+        "type": "user"
+      }
+    },
+    "t": {
+      "value": 2.0,
+      "source": {
+        "type": "user"
+      }
+    },
+    "draft": {
+      "value": 3.0,
+      "unit": "deg",
+      "source": {
+        "type": "user"
+      }
+    }
+  },
+  "features": [
+    {
+      "id": "sk_base",
+      "type": "sketch",
+      "plane": "XY",
+      "entities": [
+        {
+          "kind": "rect",
+          "corner": [
+            0,
+            0
+          ],
+          "size": [
+            "L",
+            "W"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ex_base",
+      "type": "extrude",
+      "profile": "sk_base",
+      "distance": "H",
+      "operation": "new_body"
+    },
+    {
+      "id": "dr_walls",
+      "type": "draft",
+      "faces": {
+        "select": "vertical_outer",
+        "expect": 4
+      },
+      "plane": "XY",
+      "angle": "draft"
+    },
+    {
+      "id": "sh_tray",
+      "type": "shell",
+      "faces": {
+        "select": "top",
+        "expect": 1
+      },
+      "thickness": "t"
+    }
+  ],
+  "checks": [
+    {
+      "id": "c_bbox",
+      "kind": "bbox",
+      "expected": [
+        "L",
+        "W",
+        "H"
+      ]
+    },
+    {
+      "id": "c_vol",
+      "kind": "volume",
+      "expected": 13361.962,
+      "rel_tol": 0.003,
+      "note": "prismoid(outer) - prismoid(inner, walls offset t/cos(draft))"
+    }
+  ]
+}

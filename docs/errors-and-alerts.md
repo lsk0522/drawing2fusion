@@ -113,6 +113,9 @@
 | Telegram | Bot API (인라인 버튼으로 BLOCK 응답 가능) | 모바일에서 바로 답하기 |
 | 이메일 | SMTP | 완료 리포트 요약 |
 
+설정 확인: `notify_test.bat` (또는 `python -m d2f notify-test [--channel discord|telegram]`) — `.env`의 웹훅/봇 토큰으로
+테스트 메시지를 한 번 보내고 ✅ 보냄 / ⚪ 설정 안 됨 / 🔴 실패(이유)를 보여 줍니다. 토큰은 화면에 출력하지 않습니다.
+
 라우팅 기본값 (`.env`의 `D2F_NOTIFY_CHANNELS`로 변경):
 
 ```

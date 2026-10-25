@@ -286,6 +286,19 @@ def _group_inferred(issues, limit=3):
     return out
 
 
+def cmd_notify_test(args):
+    from . import notify
+    chans = ("discord", "telegram") if args.channel == "all" else (args.channel,)
+    res = notify.test_channels(chans)
+    icon = {"sent": "✅", "not_configured": "⚪", "failed": "🔴"}
+    for r in res:
+        print("%s %-9s %s" % (icon[r["status"]], r["channel"], r["detail"]))
+    if all(r["status"] == "not_configured" for r in res):
+        print("\n알림을 받으려면 .env 에 DISCORD_WEBHOOK_URL 또는 TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID 를 넣고,"
+              "\nD2F_NOTIFY_CHANNELS 에 discord / telegram 을 추가하세요 (docs/errors-and-alerts.md).")
+    return 1 if any(r["status"] == "failed" for r in res) else 0
+
+
 def cmd_extract(args):
     from . import drawing
     spec_path, spec, report = drawing.extract_to(args.drawing, os.path.abspath(args.out), getattr(args, "page", None))
@@ -321,6 +334,8 @@ def main(argv=None):
     sub.add_parser("ping", help="check the Fusion add-in bridge")
     sub.add_parser("menu", help="interactive menu (run.bat)")
     sub.add_parser("doctor", help="check Python, add-in install and Fusion connection")
+    pn = sub.add_parser("notify-test", help="send a test alert to Discord / Telegram (from .env)")
+    pn.add_argument("--channel", choices=("discord", "telegram", "all"), default="all")
     pq = sub.add_parser("quick", help="build one spec with defaults and open the result folder")
     pq.add_argument("spec")
 
@@ -373,6 +388,8 @@ def main(argv=None):
         return cmd_build(args)
     if args.cmd == "verify":
         return cmd_build(args, measure_only=True)
+    if args.cmd == "notify-test":
+        return cmd_notify_test(args)
     if args.cmd == "extract":
         return cmd_extract(args)
     if args.cmd == "run":

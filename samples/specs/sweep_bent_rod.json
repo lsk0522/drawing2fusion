@@ -1,0 +1,110 @@
+{
+  "schema_version": "0.1",
+  "part": {
+    "name": "sweep_bent_rod",
+    "drawing": {
+      "file": "(hand-written)",
+      "units": "mm"
+    },
+    "note": "Ø6 rod swept along a 50 mm straight + R20 90 deg bend (path on XY, profile on YZ)."
+  },
+  "parameters": {
+    "d": {
+      "value": 6.0,
+      "source": {
+        "type": "user"
+      }
+    },
+    "Ls": {
+      "value": 50.0,
+      "source": {
+        "type": "user"
+      }
+    },
+    "R": {
+      "value": 20.0,
+      "source": {
+        "type": "user"
+      }
+    }
+  },
+  "features": [
+    {
+      "id": "sk_path",
+      "type": "sketch",
+      "plane": "XY",
+      "require_profile": false,
+      "constraints": "none",
+      "entities": [
+        {
+          "kind": "path",
+          "closed": false,
+          "start": [
+            0,
+            0
+          ],
+          "segments": [
+            {
+              "type": "line",
+              "to": [
+                "Ls",
+                0
+              ]
+            },
+            {
+              "type": "arc",
+              "to": [
+                "Ls + R",
+                "R"
+              ],
+              "center": [
+                "Ls",
+                "R"
+              ],
+              "ccw": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sk_profile",
+      "type": "sketch",
+      "plane": "YZ",
+      "entities": [
+        {
+          "kind": "circle",
+          "center": [
+            0,
+            0
+          ],
+          "diameter": "d"
+        }
+      ]
+    },
+    {
+      "id": "sw_rod",
+      "type": "sweep",
+      "profile": "sk_profile",
+      "path": "sk_path",
+      "operation": "new_body"
+    }
+  ],
+  "checks": [
+    {
+      "id": "c_bbox",
+      "kind": "bbox",
+      "expected": [
+        "Ls + R + d/2",
+        "R + d/2",
+        "d"
+      ]
+    },
+    {
+      "id": "c_vol",
+      "kind": "volume",
+      "expected": 2301.981,
+      "rel_tol": 0.002
+    }
+  ]
+}

@@ -172,6 +172,48 @@ class ValidateTests(unittest.TestCase):
         r = [x for x in circles.compare_circles(vc, measure) if x["view"] == "top"][0]
         self.assertIn("도면에 원이 없음", r["message"])
 
+    def test_notify_test_channels(self):
+        import http.server
+        import threading
+        from d2f import notify
+        got = []
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                got.append((self.path, json.loads(self.rfile.read(int(self.headers["Content-Length"])))))
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+            def log_message(self, *a):
+                pass
+        srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        base = "http://127.0.0.1:%d" % srv.server_address[1]
+        keys = ("DISCORD_WEBHOOK_URL", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "D2F_TELEGRAM_API")
+        old = {k: os.environ.get(k) for k in keys}
+        try:
+            for k in keys:
+                os.environ.pop(k, None)
+            self.assertEqual({r["status"] for r in notify.test_channels()}, {"not_configured"})
+            os.environ.update(DISCORD_WEBHOOK_URL=base + "/hook", TELEGRAM_BOT_TOKEN="SECRET123",
+                              TELEGRAM_CHAT_ID="42", D2F_TELEGRAM_API=base)
+            res = notify.test_channels()
+            self.assertEqual([r["status"] for r in res], ["sent", "sent"])
+            self.assertEqual(got[0][0], "/hook")
+            self.assertEqual((got[1][0], got[1][1]["chat_id"]), ("/botSECRET123/sendMessage", "42"))
+            os.environ["DISCORD_WEBHOOK_URL"] = "http://127.0.0.1:1/SECRETHOOK"      # nothing listens
+            r = notify.test_channels(("discord",))[0]
+            self.assertEqual(r["status"], "failed")
+            self.assertNotIn("SECRETHOOK", r["detail"])
+        finally:
+            srv.shutdown()
+            for k, v in old.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+
     def test_undefined_and_reserved(self):
         spec = {"schema_version": "0.1", "part": {"name": "x"},
                 "parameters": {"9x": {"value": 1}, "L": {"value": 10}},

@@ -140,3 +140,65 @@ def _vertical_feature_edges(ctx, feature_id):
                 seen.add(e.tempId)
                 out.append(e)
     return out
+
+
+# --------------------------------------------------------------------------- faces
+FACE_SELECTORS = ("top", "bottom", "front", "back", "left", "right", "vertical_outer", "side_all")
+_SIDE = {   # name -> (axis index, at max?)
+    "top": (2, True), "bottom": (2, False), "front": (1, False), "back": (1, True),
+    "left": (0, False), "right": (0, True),
+}
+
+
+def _xyz(p):
+    return (p.x, p.y, p.z)
+
+
+def select_faces(ctx, sel):
+    """Faces of the target body by geometry.
+
+    top / bottom / front / back / left / right   planar faces lying on that side of the bbox
+                                                 (front = -Y side, the side the front view looks at)
+    vertical_outer   planar faces parallel to Z that lie on the bbox outline
+    side_all         every face parallel to Z (planar walls and Z-axis cylinders / cones excluded)
+    faces_of:<id>    faces created by feature <id>
+    """
+    name = sel.get("select", "")
+    if name.startswith("faces_of:"):
+        feat = ctx.objects.get(name.split(":", 1)[1])
+        if feat is None:
+            raise ValueError("feature '%s' not built" % name.split(":", 1)[1])
+        return [feat.faces.item(i) for i in range(feat.faces.count)]
+    body = _target_body(ctx, sel.get("of"))
+    bb = body.boundingBox
+    lo, hi = _xyz(bb.minPoint), _xyz(bb.maxPoint)
+    out = []
+    for i in range(body.faces.count):
+        f = body.faces.item(i)
+        g = f.geometry
+        planar = g.objectType == adsk.core.Plane.classType()
+        fb = f.boundingBox
+        flo, fhi = _xyz(fb.minPoint), _xyz(fb.maxPoint)
+        if name in _SIDE:
+            if not planar:
+                continue
+            k, at_max = _SIDE[name]
+            level = hi[k] if at_max else lo[k]
+            if _near(flo[k], level) and _near(fhi[k], level):
+                out.append(f)
+        elif name in ("vertical_outer", "side_all"):
+            if planar:
+                n = g.normal
+                if abs(n.z) > 1e-6:
+                    continue
+                if name == "vertical_outer":
+                    on = any((_near(flo[k], lo[k]) and _near(fhi[k], lo[k])) or (_near(flo[k], hi[k]) and _near(fhi[k], hi[k]))
+                             for k in (0, 1))
+                    if not on:
+                        continue
+                out.append(f)
+            elif name == "side_all" and g.objectType == adsk.core.Cylinder.classType() and abs(g.axis.z) > 1 - 1e-6:
+                out.append(f)
+        else:
+            raise ValueError("unknown face selector '%s'" % name)
+    return out

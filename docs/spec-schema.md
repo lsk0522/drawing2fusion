@@ -139,6 +139,25 @@ Fusion 엣지 ID는 빌드마다 바뀔 수 있으므로, 셀렉터 → 엣지 �
 나사(`hole.thread`): ISO 미터 `{ "designation": "M6x1", "size": 6, "pitch": 1, "class": "6H" }`,
 인치 `{ "designation": "1/4-20 UNC", "type": "ANSI Unified Screw Threads", "size_label": "1/4", "class": "2B" }`.
 
+### shell / draft / sweep / loft (v0.4, 손으로 쓰거나 MCP로 만드는 스펙용)
+
+```json
+{ "id": "dr_walls", "type": "draft", "faces": { "select": "vertical_outer", "expect": 4 }, "plane": "XY", "angle": "draft" }
+{ "id": "sh_tray",  "type": "shell", "faces": { "select": "top", "expect": 1 }, "thickness": "t" }
+{ "id": "lf_body",  "type": "loft",  "sections": ["sk_bottom", "sk_top"], "operation": "new_body" }
+{ "id": "sw_rod",   "type": "sweep", "profile": "sk_profile", "path": "sk_path", "operation": "new_body" }
+```
+
+- **면 셀렉터** (`faces.select`): `top` `bottom` `front`(−Y 쪽) `back` `left`(−X) `right` — 그 쪽 바운딩 박스 면의 평면,
+  `vertical_outer` — Z에 평행하고 바운딩 박스 외곽에 있는 평면, `side_all` — Z에 평행한 모든 평면 + Z축 원통, `faces_of:<id>`.
+  `expect`로 개수를 고정하면 다르게 잡혔을 때 E305로 멈춤.
+- **shell**: `faces` = 열어 둘 면(없으면 속이 빈 닫힌 몸체), `thickness`, `direction`: `inside`(기본) / `outside`.
+- **draft**: `plane`(+`offset`) = 기준면(중립면, 뽑는 방향), `angle`(도), 방향이 반대면 `flip: true`.
+- **sweep**: `path`는 열린 선·호 스케치(`"require_profile": false`, `path` 엔티티에 `"closed": false` 가능), `profile`은 경로 시작점에서
+  경로에 수직인 평면의 닫힌 스케치. `orientation`: `perpendicular`(기본) / `parallel`.
+- **loft**: `sections`의 각 스케치에서 가장 큰 프로파일을 순서대로 이음.
+- 예시: `samples/specs/tray_draft_shell.json`, `loft_square_to_round.json`, `sweep_bent_rod.json`
+
 ## 5. checks — 사후 검증 대상
 
 사전에 "도면이 보장하는 사실"을 적어두고, 빌드 후 실측과 비교한다.
