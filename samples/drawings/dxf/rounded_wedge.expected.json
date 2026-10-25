@@ -1,0 +1,11 @@
+{
+  "bbox": [
+    70.0,
+    40.0,
+    30.0
+  ],
+  "holes": [],
+  "volume": 67194.69106990563,
+  "volume_rel_tol": 0.002,
+  "mode": "intersect"
+}

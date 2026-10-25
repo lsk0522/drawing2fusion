@@ -399,6 +399,125 @@ def plate_tapped():
                "volume": vol}
 
 
+# ---------------------------------------------------------------------------- curved / slanted outlines
+def link_plate():
+    """Obround link: two R15 ends 60 apart, t=10, Ø12 holes at the arc centres (plan view curved)."""
+    c, R, T, d = 60.0, 15.0, 10.0, 12.0
+    L, W = c + 2 * R, 2 * R
+    s = Sheet("LINK_PLATE")
+    ty, rx = T + GAP, L + GAP
+    s.rect(0, 0, L, T)
+    for x in (R, R + c):
+        for dx in (-d / 2, d / 2):
+            s.hidden_v(x + dx, 0, T)
+        s.line((x, -3), (x, T + 3), "CENTER")
+    s.line((R, ty), (R + c, ty))
+    s.line((R + c, ty + W), (R, ty + W))
+    s.arc((R + c, ty + R), R, 270, 90)
+    s.arc((R, ty + R), R, 90, 270)
+    for x in (R, R + c):
+        s.circle((x, ty + R), d / 2)
+        s.center_mark((x, ty + R), d / 2)
+    s.rect(rx, 0, W, T)
+    s.hdim((0, 0), (L, 0), -12)
+    s.vdim((L, 0), (L, T), L + 12)
+    s.vdim((0, ty), (0, ty + W), -12)
+    s.hdim((R, ty + R), (R + c, ty + R), ty + W + 10)
+    s.rdim((R + c, ty + R), R, angle=45, text="2-R<>")
+    s.ddim((R, ty + R), d / 2, angle=135, text="2-%%c<>")
+    vol = (c * W + math.pi * R * R) * T - 2 * math.pi * (d / 2) ** 2 * T
+    return s, {"bbox": [L, W, T], "holes": [{"axis": "Z", "diameter": d, "positions": [[R, R], [R + c, R]]}],
+               "volume": vol, "mode": "bands_path"}
+
+
+def clevis_lug():
+    """Upright lug, round top R25 (front view curved), Ø14 through along Y at the arc centre."""
+    Wd, Hs, R, T, d = 50.0, 25.0, 25.0, 12.0, 14.0
+    H = Hs + R
+    s = Sheet("CLEVIS_LUG")
+    ty, rx = H + GAP, Wd + GAP
+    s.line((0, 0), (Wd, 0))
+    s.line((Wd, 0), (Wd, Hs))
+    s.arc((R, Hs), R, 0, 180)
+    s.line((0, Hs), (0, 0))
+    s.circle((R, Hs), d / 2)
+    s.center_mark((R, Hs), d / 2)
+    s.rect(0, ty, Wd, T)
+    for dx in (-d / 2, d / 2):
+        s.hidden_v(R + dx, ty, ty + T)
+    s.rect(rx, 0, T, H)
+    s.line((rx, Hs), (rx + T, Hs))                    # tangent edge where the round top starts
+    for dz in (-d / 2, d / 2):
+        s.hidden_h(Hs + dz, rx, rx + T)
+    s.hdim((0, 0), (Wd, 0), -12)
+    s.vdim((0, 0), (0, H), -12)
+    s.vdim((Wd, 0), (Wd, Hs), Wd + 12)
+    s.vdim((0, ty), (0, ty + T), -12)
+    s.rdim((R, Hs), R, angle=45)
+    s.ddim((R, Hs), d / 2, angle=225, text="%%c<>")
+    vol = (Wd * Hs + math.pi * R * R / 2) * T - math.pi * (d / 2) ** 2 * T
+    return s, {"bbox": [Wd, T, H], "holes": [{"axis": "Y", "diameter": d, "positions": [[R, Hs]], "depth": "through"}],
+               "volume": vol, "mode": "intersect"}
+
+
+def slanted_block():
+    """Block with a sloped face: front outline (0,0)-(60,0)-(60,20)-(40,35)-(0,35); Ø8 through from the top."""
+    L, W, H, h, xs = 60.0, 30.0, 35.0, 20.0, 40.0
+    s = Sheet("SLANTED_BLOCK")
+    ty, rx = H + GAP, L + GAP
+    s.poly([(0, 0), (L, 0), (L, h), (xs, H), (0, H)])
+    for dx in (-4, 4):
+        s.hidden_v(20 + dx, 0, H)
+    s.line((20, -3), (20, H + 3), "CENTER")
+    s.rect(0, ty, L, W)
+    s.line((xs, ty), (xs, ty + W))                    # ridge of the slope
+    s.circle((20, ty + 15), 4)
+    s.center_mark((20, ty + 15), 4)
+    s.rect(rx, 0, W, H)
+    s.line((rx, h), (rx + W, h))                      # lower edge of the slope seen from the side
+    s.hdim((0, 0), (L, 0), -12)
+    s.vdim((L, 0), (L, h), L + 12)
+    s.vdim((0, 0), (0, H), -12)
+    s.hdim((0, H), (xs, H), H + 10)
+    s.vdim((0, ty), (0, ty + W), -12)
+    s.hdim((0, ty + W), (20, ty + 15), ty + W + 10)
+    s.vdim((L, ty), (20, ty + 15), L + 12)
+    s.ddim((20, ty + 15), 4, angle=45, text="%%c<>")
+    vol = (L * h + xs * (H - h) + 0.5 * (L - xs) * (H - h)) * W - math.pi * 16 * H
+    return s, {"bbox": [L, W, H], "holes": [{"axis": "Z", "diameter": 8.0, "positions": [[20, 15]]}],
+               "volume": vol, "mode": "intersect"}
+
+
+def rounded_wedge():
+    """Two curved views at once: plan view with an R20 round end, front view with a slope.
+    Exercises the true three-view intersection (numerical volume)."""
+    L, W, H, R, h, xs = 70.0, 40.0, 30.0, 20.0, 12.0, 30.0
+    s = Sheet("ROUNDED_WEDGE")
+    ty, rx = H + GAP, L + GAP
+    s.poly([(0, 0), (L, 0), (L, h), (xs, H), (0, H)], closed=True)
+    s.line((L - R, ty), (0, ty))
+    s.line((0, ty), (0, ty + W))
+    s.line((0, ty + W), (L - R, ty + W))
+    s.arc((L - R, ty + R), R, 270, 90)
+    s.line((xs, ty), (xs, ty + W))
+    s.rect(rx, 0, W, H)
+    s.line((rx, h), (rx + W, h))
+    s.hdim((0, 0), (L, 0), -12)
+    s.vdim((L, 0), (L, h), L + 12)
+    s.vdim((0, 0), (0, H), -12)
+    s.hdim((0, H), (xs, H), H + 10)
+    s.vdim((0, ty), (0, ty + W), -12)
+    s.rdim((L - R, ty + R), R, angle=45)
+    # exact volume: integrate the front height over the plan-view width at each x
+    n, vol = 20000, 0.0
+    for k in range(n):
+        x = (k + 0.5) * L / n
+        z = H if x <= xs else H - (H - h) * (x - xs) / (L - xs)
+        y = W if x <= L - R else 2 * math.sqrt(max(R * R - (x - (L - R)) ** 2, 0.0))
+        vol += z * y * L / n
+    return s, {"bbox": [L, W, H], "holes": [], "volume": vol, "volume_rel_tol": 0.002, "mode": "intersect"}
+
+
 # ---------------------------------------------------------------------------- turned parts (sections)
 def _pappus(prof):
     a = cy = 0.0
@@ -552,6 +671,10 @@ PARTS = {
     "gear_blank_section": gear_blank_section,
     "broken_section_dim": broken_section_dim,
     "broken_keyway_noview": broken_keyway_noview,
+    "link_plate": link_plate,
+    "clevis_lug": clevis_lug,
+    "slanted_block": slanted_block,
+    "rounded_wedge": rounded_wedge,
 }
 
 

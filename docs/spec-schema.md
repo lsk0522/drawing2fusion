@@ -63,8 +63,24 @@ Fusion User Parameters로 그대로 등록된다.
 }
 ```
 
-엔티티 종류: `line`, `arc`, `circle`, `rect`, `slot`, `polyline`
+엔티티 종류: `line`, `arc`, `circle`, `rect`, `slot`, `polyline`, `path`
 값 자리에는 숫자 또는 파라미터 이름/식(`"L/2"`) 사용 가능.
+
+`path` — 선과 호가 섞인 닫힌 외곽을 그려진 그대로:
+
+```json
+{ "kind": "path", "closed": true, "start": [15, 0],
+  "segments": [
+    { "type": "line", "to": [75, 0] },
+    { "type": "arc",  "to": [75, 30], "center": [75, 15], "ccw": true, "radius_param": "t_r1" },
+    { "type": "line", "to": [15, 30] },
+    { "type": "arc",  "to": [15, 0],  "center": [15, 15], "ccw": true } ] }
+```
+
+- 좌표는 평면의 월드 축 기준(XY→(X,Y), XZ→(X,Z), YZ→(Y,Z)), `ccw`도 그 축 기준 반시계
+- 호는 시작·중간·끝 세 점으로 만들어서 XZ/YZ 스케치의 축 뒤집힘에 영향을 받지 않음
+- 자동 구속: 꼭짓점마다 원점 기준 치수, 호마다 반지름 치수(`radius_param`이 있으면 그 파라미터로) → 완전 구속
+- 검사(E205): 호의 시작·끝이 같은 원 위에 있는지, 닫힌 외곽이 시작점으로 돌아오는지
 
 ### extrude
 

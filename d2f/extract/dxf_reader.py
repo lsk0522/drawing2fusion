@@ -21,6 +21,7 @@ import math
 import os
 import re
 
+from . import intersect
 from . import tolerance
 
 try:
@@ -595,6 +596,77 @@ def outline(view, tol):
             "note": "곡선이 섞인 외곽을 꼭짓점 다각형으로 근사했습니다"}
 
 
+def _loop_curved(loop, tol):
+    """True when an outer loop has an arc or a slanted line (not representable as straight bands)."""
+    if not loop:
+        return False
+    for a, b, sg in loop:
+        if sg.kind == "arc":
+            return True
+        if abs(a[0] - b[0]) > tol and abs(a[1] - b[1]) > tol:
+            return True
+    return False
+
+
+def _parametrize_paths(feats, axes, extents, add_param, params):
+    """Path coordinates -> parameter names where the drawing dimensions them.
+
+    A coordinate equal to the part's full size becomes L / W / H; any other coordinate that a
+    dimension measures from the origin edge becomes its own parameter (source: that dimension).
+    Unmatched values stay numbers."""
+    made = {}
+    view_of = {"XZ": "front", "XY": "top", "YZ": "side"}
+    label = {"front": "정면도", "top": "평면도", "side": "측면도"}
+
+    def name_for(view, axis_i, v):
+        if not isinstance(v, (int, float)) or abs(v) < 1e-9:
+            return v
+        full = axes[view][axis_i]
+        if abs(v - extents[full]) <= max(0.01, abs(v) * 1e-4):
+            return full
+        key = (view, axis_i, round(v, 4))
+        if key not in made:
+            pname = "%s_%s%d" % (view[0], "uv"[axis_i], 1 + sum(1 for k in made if k[:2] == (view, axis_i)))
+            add_param(pname, v, (view,), what="%s 외곽 꼭짓점 좌표" % label[view])
+            if (params[pname].get("source") or {}).get("type") == "inferred":
+                del params[pname]           # no dimension gives it: keep the plain number
+                pname = None
+            made[key] = pname
+        return made[key] or v
+
+    for f in feats:
+        if f.get("type") != "sketch":
+            continue
+        view = view_of.get(f.get("plane"))
+        for ent in f.get("entities", []):
+            if ent.get("kind") != "path" or view is None:
+                continue
+            cur = ent["start"]
+            for sg in ent["segments"]:
+                if sg["type"] == "arc":
+                    # the radius dimension of a drawn arc: record which dimension it came from
+                    r = math.dist(cur, sg["center"])
+                    rkey = (view, "r", round(r, 4))
+                    if rkey not in made:
+                        rname = "%s_r%d" % (view[0], 1 + sum(1 for k in made if k[:2] == (view, "r")))
+                        add_param(rname, r, (view,), ("radius", "diameter"), "%s 외곽 호 반지름" % label[view])
+                        if (params[rname].get("source") or {}).get("type") == "inferred":
+                            del params[rname]
+                            rname = None
+                        made[rkey] = rname
+                    if made[rkey]:
+                        sg["radius_param"] = made[rkey]
+                cur = sg["to"]
+            ent["start"] = [name_for(view, i, v) for i, v in enumerate(ent["start"])]
+            for sg in ent["segments"]:
+                sg["to"] = [name_for(view, i, v) for i, v in enumerate(sg["to"])]
+                if sg["type"] == "arc":
+                    # a centre on a named coordinate follows it (no new parameter for centres alone)
+                    sg["center"] = [made.get((view, i, round(v, 4))) or v if isinstance(v, (int, float)) else v
+                                    for i, v in enumerate(sg["center"])]
+    return made
+
+
 def _point_in_polygon(p, poly):
     x, y = p
     inside = False
@@ -1026,15 +1098,27 @@ def extract(path, name=None, tol=None):
 
     # ---- footprint (top view) and Z bands
     out = outline(top, tol) if top else {"kind": "rect", "corner": (0, 0), "size": (L / scale, (W or 0) / scale)}
-    if out.get("approx"):
+    loops = {k: _graph_outer_loop(v.segs, tol) for k, v in named.items()}
+    curved_views = [k for k in ("front", "side") if named.get(k) is not None and _loop_curved(loops.get(k), tol)]
+    inter = bool(curved_views) and W is not None and H is not None
+    top_path = None
+    if top and out.get("approx") and loops.get("top") and not inter:
+        # lines + arcs in the plan view: sketch them exactly instead of a vertex polygon
+        top_path = intersect.loop_path(top, loops["top"], scale)
+        issue("E207", "INFO", "평면도 외곽에 곡선이 있어 선·호를 그대로 스케치합니다")
+    elif out.get("approx") and not inter:
         issue("E207", "WARN", out.get("note", "평면도 외곽을 찾지 못해 사각형으로 가정했습니다"))
     bands = []
     curved_bands = []
     if front:
         bands = z_bands(front, "x", tol, curved_bands)
-    for z0, z1 in curved_bands:
-        issue("E207", "WARN", "정면도 높이 %.3f~%.3f 구간의 바깥선이 곡선/경사입니다 — 곧은 벽으로 근사했습니다 (평면도 원으로 맞으면 원기둥)"
-              % (z0 * scale, z1 * scale))
+    if inter:
+        issue("E207", "INFO", "%s 외곽에 곡선/경사가 있어 투상도 외곽을 각각 돌출해 교차시킨 형상으로 만듭니다"
+              % "·".join({"front": "정면도", "side": "측면도"}[k] for k in curved_views))
+    else:
+        for z0, z1 in curved_bands:
+            issue("E207", "WARN", "정면도 높이 %.3f~%.3f 구간의 바깥선이 곡선/경사입니다 — 곧은 벽으로 근사했습니다 (평면도 원으로 맞으면 원기둥)"
+                  % (z0 * scale, z1 * scale))
     if not bands:
         bands = [(0.0, (H or 0) / scale, 0.0, L / scale)]
     side_bands = z_bands(side, "y", tol) if side else []
@@ -1043,9 +1127,20 @@ def extract(path, name=None, tol=None):
     band_params = []
     features_vol = 0.0
     vol_ok = True
-    band_tops = []   # (footprint-test fn, z_top_mm)
+    band_tops = []   # (footprint-test fn, z_top_mm or fn(point, r) -> z_top_mm)
     footprint_circles = [out["seg"]] if out.get("kind") == "circle" else []
-    for bi, (z0, z1, u0, u1) in enumerate(bands):
+    if inter:
+        feats_i, info = intersect.build(named, scale, tol, L, W, H, loops)
+        _parametrize_paths(feats_i, {"front": ("L", "H"), "top": ("L", "W"), "side": ("W", "H")},
+                           {"L": L, "W": W, "H": H}, add_param, params)
+        features += feats_i
+        features_vol = info["volume"] or 0.0
+        if not info["exact"]:
+            notes.append({"text": "부피 기대값은 투상도 외곽 %s의 교차를 격자 적분한 값입니다" % "·".join(info["views"]),
+                          "applied": True, "reason": "곡선 외곽 교차 형상"})
+        report["intersect"] = {"views": info["views"], "volume": info["volume"], "exact": info["exact"]}
+        band_tops.append(intersect.inside_and_top(info["polygons"], L, W, H))
+    for bi, (z0, z1, u0, u1) in enumerate(bands if not inter else []):
         zb0, zb1 = z0 * scale, z1 * scale
         full_x = abs(u0) < tol * 10 and abs(u1 - (front.w if front else L / scale)) < tol * 10
         yb = None
@@ -1079,6 +1174,12 @@ def extract(path, name=None, tol=None):
                     fillet = add_param("r_corner", out["fillet"] * scale, ("top",), ("radius",), "모서리 R")
                     rr = out["fillet"] * scale
                     area -= 4 * (rr * rr - math.pi * rr * rr / 4)
+            elif top_path is not None:
+                sketch["entities"].append({"kind": "path", "closed": True, "start": top_path["start"],
+                                           "segments": top_path["segments"]})
+                area = intersect.path_area(top_path)
+                poly = [tuple(p) for p in top_path["polygon"]]
+                inside = (lambda poly_: (lambda p: _point_in_polygon(p, poly_)))(poly)
             else:
                 pts = [[_r(p[0] * scale), _r(p[1] * scale)] for p in out["points"]]
                 sketch["entities"].append({"kind": "polyline", "closed": True, "points": pts})
@@ -1125,6 +1226,10 @@ def extract(path, name=None, tol=None):
         features_vol += area * height
         band_tops.append((inside, zb1))
 
+    if top_path is not None:
+        _parametrize_paths([f for f in features if f.get("id") == "sk_base"], {"top": ("L", "W")},
+                           {"L": L, "W": W, "H": H}, add_param, params)
+
     # ---- derived parameters: express undimensioned sizes through dimensioned ones
     def src(n):
         return (params.get(n) or {}).get("source", {}).get("type")
@@ -1166,10 +1271,14 @@ def extract(path, name=None, tol=None):
         for gidx, g in enumerate(top_groups):
             radii = sorted(g["radii"])
             cx, cy = g["center"][0] * scale, g["center"][1] * scale
-            ztop = max([zt for ins, zt in band_tops if ins((cx, cy))], default=None)
+            r_out = radii[-1] * scale
+            ztop = max([zt((cx, cy), r_out) if callable(zt) else zt for ins, zt in band_tops if ins((cx, cy))],
+                       default=None)
             if ztop is None:
                 issue("E205", "WARN", "평면도의 원 (%.2f, %.2f)이 형상 밖에 있어 무시했습니다" % (cx, cy))
                 continue
+            # material height along the hole axis (for the volume): the surface over the centre
+            zvol = max([zt((cx, cy), 0) if callable(zt) else zt for ins, zt in band_tops if ins((cx, cy))])
             d = 2 * radii[0] * scale
             cb = 2 * radii[-1] * scale if len(radii) > 1 else None
             # tapped hole: an "M6" callout next to it (drawn as tap-drill circle + thin 3/4 arc)
@@ -1196,7 +1305,7 @@ def extract(path, name=None, tol=None):
             else:
                 assumed = True
             spec_h = {"center": (cx, cy), "d": d, "cb": cb, "cb_depth": cb_depth,
-                      "depth": depth, "ztop": ztop, "assumed": assumed}
+                      "depth": depth, "ztop": ztop, "zvol": zvol, "assumed": assumed}
             if thread:
                 spec_h["thread"] = {"designation": "M%gx%g" % (thread["size"], thread["pitch"]), "size": thread["size"],
                                     "pitch": thread["pitch"], "class": "6H", "modeled": False,
@@ -1268,14 +1377,18 @@ def extract(path, name=None, tol=None):
                        "expected": feat["positions"]})
         if hole_checks_tol:
             checks[-1]["diameter_tol"] = checks[-2]["diameter_tol"] = hole_checks_tol
-        depth_mm = h0["ztop"] if h0["depth"] == "through_all" else float(h0["depth"])
         r = h0["d"] / 2
+        for h in hs:
+            # through: the material under the surface at the hole centre (a sloped top cuts a
+            # linear wedge whose mean height is the centre height)
+            depth_mm = h["zvol"] if h0["depth"] == "through_all" else float(h0["depth"])
+            if h0["cb"]:
+                cbr, cbh = h0["cb"] / 2, h0["cb_depth"] or 0
+                features_vol -= math.pi * cbr * cbr * cbh + math.pi * r * r * max(depth_mm - cbh, 0)
+            else:
+                features_vol -= math.pi * r * r * depth_mm
         if h0["cb"]:
-            cbr, cbh = h0["cb"] / 2, h0["cb_depth"] or 0
-            features_vol -= n * (math.pi * cbr * cbr * cbh + math.pi * r * r * max(depth_mm - cbh, 0))
             checks.append({"id": "c_%s_cb" % feat["id"], "kind": "hole_count", "diameter": feat["cb_diameter"], "expected": n})
-        else:
-            features_vol -= n * math.pi * r * r * depth_mm
 
     # ---- holes drilled from the side: circles in the front view (along Y) / side view (along X)
     n_groups = len(groups)

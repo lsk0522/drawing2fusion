@@ -92,6 +92,8 @@ MUTATIONS = [
     ("gear_blank_section", "안쪽 웹 지름 D3 80→70 (바깥 모양은 그대로)", _set_param("D3", 70), "E410"),
     ("plate_tapped", "탭(M6) 나사 빠뜨림", _feature("h1", lambda f: f.pop("thread")), "E409"),
     ("block_side_holes", "옆 구멍(Y 방향) 높이 Z 15→18", _feature("h2", lambda f: f["positions"].__setitem__(0, [20, 18])), "E404"),
+    ("slanted_block", "경사 시작 높이 f_v1 20→25 (경사면이 다른 자리)", _set_param("f_v1", 25), "E406"),
+    ("rounded_wedge", "경사 시작 X f_u1 30→36", _set_param("f_u1", 36), "E406"),
     ("pulley_keyway_section", "키홈을 반대쪽(−Z)에 가공",
      _feature("sk_key", lambda f: f["entities"][0].__setitem__("corner", ["-key_w/2", "-(key_t - D1/2)"])), "E408"),
 ]

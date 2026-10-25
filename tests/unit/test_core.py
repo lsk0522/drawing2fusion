@@ -113,6 +113,31 @@ class ValidateTests(unittest.TestCase):
         self.assertIn("E207", codes(issues, "WARN"))
         self.assertTrue(any(i.get("question") for i in issues))
 
+    def test_path_entity(self):
+        def spec_with(ent, holes=()):
+            feats = [{"id": "s", "type": "sketch", "entities": [ent]},
+                     {"id": "e", "type": "extrude", "profile": "s", "distance": 10}]
+            for k, pos in enumerate(holes):
+                feats.append({"id": "h%d" % k, "type": "hole", "face": {"plane": "XY", "offset": 10},
+                              "positions": [pos], "diameter": 12, "depth": "through_all"})
+            return {"schema_version": "0.1", "part": {"name": "x"}, "parameters": {"R": {"value": 15}},
+                    "features": feats}
+        ob = {"kind": "path", "start": [15, 0], "segments": [
+            {"type": "line", "to": [75, 0]}, {"type": "arc", "to": [75, 30], "center": [75, 15], "ccw": True},
+            {"type": "line", "to": [15, 30]}, {"type": "arc", "to": [15, 0], "center": ["R", "R"], "ccw": True}]}
+        # a hole at the arc centre is inside the rounded end (vertex box alone would say outside)
+        self.assertEqual(codes(validate.validate(spec_with(ob, [[15, 15], [75, 15]])), "ERROR"), set())
+        bad = json.loads(json.dumps(ob))
+        bad["segments"][1]["center"] = [75, 10]                       # ends not on one circle
+        self.assertIn("E205", codes(validate.validate(spec_with(bad)), "ERROR"))
+        open_ = json.loads(json.dumps(ob))
+        open_["segments"][-1]["to"] = [14, 0]
+        open_["segments"][-1]["type"] = "line"
+        self.assertIn("E205", codes(validate.validate(spec_with(open_)), "ERROR"))
+        undefined = json.loads(json.dumps(ob))
+        undefined["segments"][0]["to"] = ["Q", 0]
+        self.assertIn("E206", codes(validate.validate(spec_with(undefined)), "ERROR"))
+
     def test_undefined_and_reserved(self):
         spec = {"schema_version": "0.1", "part": {"name": "x"},
                 "parameters": {"9x": {"value": 1}, "L": {"value": 10}},

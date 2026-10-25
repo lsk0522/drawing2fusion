@@ -7,6 +7,7 @@ internal cm / rad happens only through expr.py.
 Runs on Fusion's main thread only (called from the CustomEvent handler).
 """
 
+import math
 import time
 
 import adsk.core
@@ -426,8 +427,81 @@ def _ent_slot(ctx, sk, ent, auto):
         _locate_point(ctx, sk, arc.centerSketchPoint, xy)
 
 
+def _arc_mid(ctx, a, b, c, ccw):
+    """Point halfway along the arc a -> b around c (spec mm), turning CCW in spec axes if ccw."""
+    ax, ay, bx, by = ctx.num(a[0]), ctx.num(a[1]), ctx.num(b[0]), ctx.num(b[1])
+    cx, cy = ctx.num(c[0]), ctx.num(c[1])
+    a0 = math.atan2(ay - cy, ax - cx)
+    a1 = math.atan2(by - cy, bx - cx)
+    if ccw:
+        sweep = (a1 - a0) % (2 * math.pi) or 2 * math.pi
+    else:
+        sweep = -((a0 - a1) % (2 * math.pi) or 2 * math.pi)
+    r = math.hypot(ax - cx, ay - cy)
+    t = a0 + sweep / 2
+    return [cx + r * math.cos(t), cy + r * math.sin(t)], r
+
+
+def _ent_path(ctx, sk, ent, auto):
+    """Closed outline of lines and arcs, exactly as drawn:
+    {start: [u, v], segments: [{type: line, to}, {type: arc, to, center, ccw}], closed: true}.
+
+    Arcs go through three points (start, middle, end) computed in spec coordinates, so the
+    plane's axis flip (XZ / YZ sketches) cannot reverse their direction. With auto constraints
+    every vertex is dimensioned to the origin and every arc gets its radius, which fixes the
+    whole loop (an arc with both ends fixed has one freedom left: its radius)."""
+    segs = ent.get("segments") or []
+    if not segs:
+        raise BuildError("E301", "path '%s' has no segments" % ent.get("id", "?"))
+    lines, arcs = sk.sketchCurves.sketchLines, sk.sketchCurves.sketchArcs
+    closed = ent.get("closed", True)
+    cur_xy = ent["start"]
+    first_pt = None
+    cur = _pt(ctx, sk, cur_xy)
+    made = []                       # (curve, end spec xy, kind, radius)
+    for i, s in enumerate(segs):
+        last = closed and i == len(segs) - 1
+        to_xy = s["to"]
+        end = first_pt if (last and first_pt is not None) else _pt(ctx, sk, to_xy)
+        if s.get("type") == "arc":
+            mid, r = _arc_mid(ctx, cur_xy, to_xy, s["center"], s.get("ccw", True))
+            crv = arcs.addByThreePoints(cur, _pt(ctx, sk, mid), end)
+            made.append((crv, to_xy, "arc", s.get("radius_param") or r))
+        else:
+            crv = lines.addByTwoPoints(cur, end)
+            made.append((crv, to_xy, "line", None))
+        if first_pt is None:
+            first_pt = crv.startSketchPoint
+        cur, cur_xy = crv.endSketchPoint, to_xy
+    if closed:
+        tail = made[-1][0].endSketchPoint
+        if tail is not first_pt and tail.geometry.distanceTo(first_pt.geometry) < EPS_CM:
+            _try(lambda: sk.geometricConstraints.addCoincident(tail, first_pt), "path closing point")
+    if not auto:
+        return
+    _try(lambda: _locate_point(ctx, sk, first_pt, ent["start"]), "path vertex dimension")
+    count = len(made) - (1 if closed else 0)
+    for k in range(count):
+        crv, xy, _, _ = made[k]
+        _try(lambda: _locate_point(ctx, sk, crv.endSketchPoint, xy), "path vertex dimension")
+    for crv, _, kind, r in made:
+        if kind != "arc":
+            continue
+        cp = crv.centerSketchPoint.geometry
+        _try(lambda: _radius(ctx, sk, crv, cp, r), "arc radius dimension")
+
+
+def _radius(ctx, sk, arc, cp, r):
+    """Radius dimension; r is a number (mm) or a parameter name from the drawing."""
+    r_cm = ctx.cm(r)
+    d = sk.sketchDimensions.addRadialDimension(arc, adsk.core.Point3D.create(cp.x + r_cm, cp.y + r_cm, 0))
+    d.parameter.expression = ctx.fx(r) if isinstance(r, str) else "%s mm" % repr(round(r, 6))
+    return d
+
+
 _SKETCH_ENTITIES = {"rect": _ent_rect, "circle": _ent_circle, "line": _ent_line,
-                    "polyline": _ent_polyline, "arc": _ent_arc, "slot": _ent_slot}
+                    "polyline": _ent_polyline, "arc": _ent_arc, "slot": _ent_slot,
+                    "path": _ent_path}
 
 
 # --------------------------------------------------------------------------- solids

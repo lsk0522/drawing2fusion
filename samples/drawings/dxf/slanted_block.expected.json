@@ -1,0 +1,21 @@
+{
+  "bbox": [
+    60.0,
+    30.0,
+    35.0
+  ],
+  "holes": [
+    {
+      "axis": "Z",
+      "diameter": 8.0,
+      "positions": [
+        [
+          20,
+          15
+        ]
+      ]
+    }
+  ],
+  "volume": 56740.70811398971,
+  "mode": "intersect"
+}

@@ -1,0 +1,27 @@
+{
+  "bbox": [
+    50.0,
+    12.0,
+    50.0
+  ],
+  "holes": [
+    {
+      "axis": "Y",
+      "diameter": 14.0,
+      "positions": [
+        [
+          25.0,
+          25.0
+        ]
+      ],
+      "depth": "through"
+    }
+  ],
+  "volume": 24933.715970650923,
+  "mode": "intersect",
+  "source_dxf": "clevis_lug.dxf",
+  "pdf": {
+    "dash_style": "array",
+    "paper_scale": 1.0
+  }
+}

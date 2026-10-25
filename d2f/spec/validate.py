@@ -6,12 +6,12 @@ from . import expr
 
 FEATURE_TYPES = {"sketch", "extrude", "revolve", "hole", "fillet", "chamfer", "pattern_rect", "pattern_circ"}
 PLANNED_TYPES = set()
-ENTITY_KINDS = {"rect", "circle", "line", "polyline", "arc", "slot"}
+ENTITY_KINDS = {"rect", "circle", "line", "polyline", "arc", "slot", "path"}
 PLANES = {"XY", "XZ", "YZ"}
 # Fields whose values are dimensions (numbers or parameter expressions).
 VALUE_FIELDS = {"offset", "distance", "diameter", "radius", "depth", "angle", "sweep",
                 "cb_diameter", "cb_depth", "cs_diameter", "cs_angle", "size", "corner", "center",
-                "start", "end", "points", "positions", "width", "count", "pitch"}
+                "start", "end", "points", "positions", "width", "count", "pitch", "to"}
 NESTED_FIELDS = {"x", "y", "face"}
 DEFAULT_MIN_CONFIDENCE = 0.8
 
@@ -125,6 +125,11 @@ def validate(spec, min_confidence=DEFAULT_MIN_CONFIDENCE):
                     issues.append(_issue("E201", "ERROR", "unknown sketch entity kind '%s'"
                                          % ent.get("kind"), where))
                 _check_refs(ent, resolved, params, issues, where)
+                if ent.get("kind") == "path":
+                    _check_path(ent, resolved, issues, where)
+                    for seg in ent.get("segments") or []:
+                        if isinstance(seg, dict):
+                            _check_refs(seg, resolved, params, issues, where)
         if ftype in ("extrude", "revolve") and f.get("profile") not in sketches:
             issues.append(_issue("E206", "ERROR", "'%s' uses profile '%s' which is not an earlier sketch"
                                  % (fid, f.get("profile")), where))
@@ -203,6 +208,70 @@ def _safe(v, resolved):
         return None
 
 
+def path_points(ent, resolved, step_deg=5.0):
+    """Vertices of a path entity with arcs flattened (spec mm), or None if not numeric."""
+    import math
+    cur = [_safe(v, resolved) for v in ent.get("start") or []]
+    if len(cur) != 2 or None in cur:
+        return None
+    pts = [tuple(cur)]
+    for seg in ent.get("segments") or []:
+        to = [_safe(v, resolved) for v in seg.get("to") or []]
+        if len(to) != 2 or None in to:
+            return None
+        if seg.get("type") == "arc":
+            c = [_safe(v, resolved) for v in seg.get("center") or []]
+            if len(c) != 2 or None in c:
+                return None
+            a0 = math.atan2(cur[1] - c[1], cur[0] - c[0])
+            a1 = math.atan2(to[1] - c[1], to[0] - c[0])
+            if seg.get("ccw", True):
+                sweep = (a1 - a0) % (2 * math.pi) or 2 * math.pi
+            else:
+                sweep = -((a0 - a1) % (2 * math.pi) or 2 * math.pi)
+            r = math.hypot(cur[0] - c[0], cur[1] - c[1])
+            n = max(2, int(abs(math.degrees(sweep)) / step_deg))
+            pts += [(c[0] + r * math.cos(a0 + sweep * k / n), c[1] + r * math.sin(a0 + sweep * k / n))
+                    for k in range(1, n)]
+        pts.append(tuple(to))
+        cur = to
+    return pts
+
+
+def _check_path(ent, resolved, issues, where):
+    """Arc ends must lie on the arc's circle; a closed path must end where it starts."""
+    import math
+    cur = [_safe(v, resolved) for v in ent.get("start") or []]
+    if len(cur) != 2 or None in cur:
+        return
+    segs = ent.get("segments") or []
+    if not segs:
+        issues.append(_issue("E201", "ERROR", "path has no segments", where))
+        return
+    for k, seg in enumerate(segs):
+        if not isinstance(seg, dict) or seg.get("type", "line") not in ("line", "arc") or "to" not in seg:
+            issues.append(_issue("E201", "ERROR", "path segment %d needs type line/arc and 'to'" % k, where))
+            return
+        to = [_safe(v, resolved) for v in seg["to"]]
+        if None in to:
+            return
+        if seg.get("type") == "arc":
+            c = [_safe(v, resolved) for v in seg.get("center") or [None, None]]
+            if None in c:
+                issues.append(_issue("E201", "ERROR", "path arc %d needs a numeric 'center'" % k, where))
+                return
+            r0, r1 = math.dist(cur, c), math.dist(to, c)
+            if abs(r0 - r1) > max(1e-3, r0 * 1e-4):
+                issues.append(_issue("E205", "ERROR", "path arc %d: start and end are not on one circle "
+                                     "(R%.4f vs R%.4f)" % (k, r0, r1), where))
+        cur = to
+    if ent.get("closed", True):
+        start = [_safe(v, resolved) for v in ent["start"]]
+        if math.dist(start, cur) > 1e-3:
+            issues.append(_issue("E205", "ERROR", "closed path ends at (%g, %g), not at its start (%g, %g)"
+                                 % (cur[0], cur[1], start[0], start[1]), where))
+
+
 def _sketch_boxes(f, resolved):
     """Bounding boxes (xmin, ymin, xmax, ymax) of the XY sketch entities of one sketch feature."""
     boxes = []
@@ -225,6 +294,11 @@ def _sketch_boxes(f, resolved):
         elif k == "polyline":
             pts = [[_safe(v, resolved) for v in p] for p in ent.get("points", [])]
             if pts and all(None not in p for p in pts):
+                boxes.append((min(p[0] for p in pts), min(p[1] for p in pts),
+                              max(p[0] for p in pts), max(p[1] for p in pts)))
+        elif k == "path":
+            pts = path_points(ent, resolved, 2.0)
+            if pts:
                 boxes.append((min(p[0] for p in pts), min(p[1] for p in pts),
                               max(p[0] for p in pts), max(p[1] for p in pts)))
     return boxes

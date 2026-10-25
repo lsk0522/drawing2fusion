@@ -1,0 +1,30 @@
+{
+  "bbox": [
+    90.0,
+    30.0,
+    10.0
+  ],
+  "holes": [
+    {
+      "axis": "Z",
+      "diameter": 12.0,
+      "positions": [
+        [
+          15.0,
+          15.0
+        ],
+        [
+          75.0,
+          15.0
+        ]
+      ]
+    }
+  ],
+  "volume": 22806.63675999238,
+  "mode": "bands_path",
+  "source_dxf": "link_plate.dxf",
+  "pdf": {
+    "dash_style": "segments",
+    "paper_scale": 1.0
+  }
+}

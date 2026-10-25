@@ -170,6 +170,56 @@ class DxfReaderTests(unittest.TestCase):
         self.assertAlmostEqual(p["H"], 30, places=3)
 
 
+    def test_curved_outlines(self):
+        """Arcs / slopes in the outline: exact path sketches, view-intersection when needed."""
+        from d2f.extract.dxf_reader import extract
+        spec, rep = extract(os.path.join(DXF_DIR, "link_plate.dxf"))
+        ent = spec["features"][0]["entities"][0]
+        self.assertEqual(ent["kind"], "path")
+        self.assertEqual(sum(1 for s_ in ent["segments"] if s_["type"] == "arc"), 2)
+        self.assertNotIn("intersect", rep)
+        for name, views in (("clevis_lug", ["front"]), ("slanted_block", ["front"]),
+                            ("rounded_wedge", ["front", "top"])):
+            with self.subTest(drawing=name):
+                spec, rep = extract(os.path.join(DXF_DIR, name + ".dxf"))
+                self.assertEqual(rep["intersect"]["views"], views)
+                ops = [f["operation"] for f in spec["features"] if f["type"] == "extrude"]
+                self.assertEqual(ops, ["new_body"] + ["intersect"] * (len(views) - 1))
+                # no "approximated with straight walls" warning any more
+                self.assertFalse(any(i["code"] == "E207" and i["severity"] == "WARN" and "곧은 벽" in i["message"]
+                                     for i in rep["issues"]))
+        # dimensioned vertex coordinates become parameters with the dimension as source
+        spec, rep = extract(os.path.join(DXF_DIR, "slanted_block.dxf"))
+        self.assertEqual(spec["parameters"]["f_u1"]["source"]["type"], "drawing")
+        self.assertEqual(spec["parameters"]["f_u1"]["value"], 40)
+        spec, rep = extract(os.path.join(DXF_DIR, "clevis_lug.dxf"))
+        self.assertEqual(spec["parameters"]["f_r1"]["source"]["type"], "drawing")
+        arc = [s_ for s_ in spec["features"][0]["entities"][0]["segments"] if s_["type"] == "arc"][0]
+        self.assertEqual(arc["radius_param"], "f_r1")
+
+    def test_intersect_helpers(self):
+        from d2f.extract import intersect as I
+        ob = {"start": [15, 0], "segments": [
+            {"type": "line", "to": [75, 0]}, {"type": "arc", "to": [75, 30], "center": [75, 15], "ccw": True},
+            {"type": "line", "to": [15, 30]}, {"type": "arc", "to": [15, 0], "center": [15, 15], "ccw": True}]}
+        self.assertAlmostEqual(I.path_area(ob), 60 * 30 + math.pi * 225, places=6)
+        # walking the same outline clockwise gives the same area
+        cw = {"start": [15, 0], "segments": [
+            {"type": "arc", "to": [15, 30], "center": [15, 15], "ccw": False}, {"type": "line", "to": [75, 30]},
+            {"type": "arc", "to": [75, 0], "center": [75, 15], "ccw": False}, {"type": "line", "to": [15, 0]}]}
+        self.assertAlmostEqual(I.path_area(cw), I.path_area(ob), places=6)
+        rect = {"start": [0, 0], "segments": [{"type": "line", "to": p_} for p_ in
+                                              ([30, 0], [60, 0], [60, 20], [0, 20], [0, 0])]}
+        self.assertTrue(I.is_full_rect(rect, 60, 20, 0.01))
+        notch = {"start": [0, 0], "segments": [{"type": "line", "to": p_} for p_ in
+                                               ([60, 0], [60, 10], [50, 20], [0, 20], [0, 0])]}
+        self.assertFalse(I.is_full_rect(notch, 60, 20, 0.01))
+        # grid volume of a half-cylinder-topped lug against the closed form
+        fr = [(0, 0), (50, 0), (50, 25)] + [(25 + 25 * math.cos(math.radians(a)), 25 + 25 * math.sin(math.radians(a)))
+                                             for a in range(1, 180)] + [(0, 25)]
+        v = I.volume(fr, None, None, 50, 12, 50)
+        self.assertTrue(math.isclose(v, (50 * 25 + math.pi * 625 / 2) * 12, rel_tol=2e-3), v)
+
     def test_public_drawings(self):
         """QCAD example sheets (samples/drawings/public): what the reader can and cannot do."""
         from d2f.extract.dxf_reader import extract
